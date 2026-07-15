@@ -1,0 +1,54 @@
+# ============================================================================
+# decks.yaml  --  YOUR simulator deck configuration
+# ============================================================================
+# This file tells the engine which deck files to run for each device class,
+# and what the output file is called. It replaces what used to be hardcoded
+# in the runner, so you configure your simulator here WITHOUT editing any
+# Python source.
+#
+# HOW IT WORKS
+#   Your problem YAML has a line  device_class: <name>  and  measurement: <name>.
+#   The engine looks up  <name>  in the "deck_sets" below to find:
+#     structure : the file your structure/mesh tool runs   (was the SDE script)
+#     device    : the file your electrical solver runs      (was the device cmd)
+#     mesh      : the mesh file the structure step produces, that the device
+#                 step consumes (the engine checks this exists to confirm the
+#                 structure build succeeded)
+#     result    : the electrical output file the device step writes, that the
+#                 engine parses for metrics
+#     vdd       : the supply voltage, passed to the metric extractor
+#
+# Every filename here is YOURS. Rename them to match your actual deck files.
+# The names below are only examples to show the format.
+#
+# See docs/CONNECTING_A_SIMULATOR.md and docs/WORKFLOW.md for the full guide.
+# ============================================================================
+
+deck_sets:
+
+  # ---- a minimal single-sweep device (the common case) ------------------
+  # Matches  device_class: example_device   in a problem file.
+  example_device:
+    structure: example_structure.in     # your structure/mesh build script
+    device:    example_device.in        # your electrical simulation input
+    mesh:      example_mesh.out          # mesh file the structure step writes
+    result:    example_iv.out            # results file the device step writes
+    vdd:       0.7                       # supply voltage [V]
+
+  # ---- you can define as many device classes as you like ----------------
+  # Each one is looked up by the device_class name in a problem file.
+  # For example a second device with a different geometry:
+  #
+  # my_finfet:
+  #   structure: finfet_structure.in
+  #   device:    finfet_sim.in
+  #   mesh:      finfet_mesh.out
+  #   result:    finfet_iv.out
+  #   vdd:       0.8
+  #
+  # my_nanowire:
+  #   structure: nanowire_structure.in
+  #   device:    nanowire_sim.in
+  #   mesh:      nanowire_mesh.out
+  #   result:    nanowire_iv.out
+  #   vdd:       0.7

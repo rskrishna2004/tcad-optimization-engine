@@ -1,0 +1,83 @@
+# physics_rules.yaml -- the engine's machine-readable device-physics knowledge.
+# $Id: physics_rules.yaml, v1.0 2026/07/05 [YOUR NAME] $
+#
+# Curated from authoritative sources (Sze & Ng "Physics of Semiconductor
+# Devices"; Taur & Ning "Fundamentals of Modern VLSI Devices"; the the TCAD simulator
+# Device User Guide model equations) and from this project's own certified
+# campaign history. Three sections:
+#   invariants : physical laws every simulated result MUST satisfy. A trial
+#                violating one is flagged physics_suspect and EXCLUDED from
+#                the surrogate (self-correction: the engine refuses to learn
+#                from unphysical data, which is how extraction/deck bugs and
+#                solver artifacts are quarantined automatically).
+#   levers     : first-order sensitivity signs, metric <- parameter, from
+#                textbook MOSFET theory. Used to (a) generate physics-guided
+#                seeds around a baseline and (b) audit the experiment DB:
+#                if observed trends contradict these signs, either the KB or
+#                the extraction is wrong -- both are worth an alarm.
+#   notes      : units and the reasoning, kept next to the numbers.
+
+device_class: planar_bulk_mosfet   # applies to the pmos mirror identically
+
+invariants:
+  # Boltzmann limit: SS >= ln(10)*kT/q. At T_K the floor is 0.1984*T_K mV/dec
+  # (59.5 mV/dec at 300 K -> 69.5 at 350 K). Anything below is unphysical.
+  - {id: ss_boltzmann, expr: "SS_mV_per_dec >= 0.1984*T_K - 0.5", why: "thermionic limit ln(10)kT/q; 0.5 mV/dec numerical tolerance"}
+  - {id: ss_sane_hi,   expr: "SS_mV_per_dec <= 1000.0", why: "SS beyond 1 V/dec means the extraction window missed subthreshold"}
+  - {id: on_off_order, expr: "ION_A_per_um > IOFF_A_per_um", why: "a switch conducts more ON than OFF; violation = swept/parsed wrong"}
+  - {id: ioff_floor,   expr: "IOFF_A_per_um > 1.0e-20", why: "below ~1e-20 A/um the solver noise floor is being reported, not leakage"}
+  - {id: ion_ceiling,  expr: "ION_A_per_um < 5.0e-3", why: "45nm-class planar bulk cannot exceed ~few mA/um; more = unit/parse error"}
+  - {id: gm_positive,  expr: "gm_peak_S_per_um > 0.0", why: "transconductance of a working FET is positive"}
+  - {id: gain_positive, expr: "intrinsic_gain > 0.0", why: "gm/gds of a saturated FET is positive"}
+  - {id: gain_consistent, expr: "abs(intrinsic_gain - gm_op_S_per_um/gds_S_per_um) <= 0.25*intrinsic_gain", why: "gain must equal its own definition within 25% (guards extractor windows drifting apart)"}
+  - {id: ron_positive, expr: "Ron_Ohm_um > 0.0", why: "triode resistance is positive"}
+  - {id: early_sane,   expr: "Early_V < 1000.0", why: "Early voltage beyond 1 kV on a 45nm device means gds underflowed"}
+  - {id: vt_in_rails,  expr: "-0.5 <= Vt_V <= 1.5", why: "constant-current Vt outside widened rails = crossing not found"}
+  - {id: dibl_positive, expr: "DIBL_mV_per_V >= -5.0", why: "Vt_lin >= Vt_sat physically; small negative tolerance for interp noise"}
+
+levers:
+  # sign = d(metric)/d(param): '+' the metric rises when the param rises.
+  # confidence: text = textbook-solid, emp = confirmed in this project's DB.
+  ION_A_per_um:
+    LG:    {sign: '-', confidence: text, why: "shorter channel -> more drive"}
+    TOX:   {sign: '-', confidence: text, why: "thinner oxide -> more Cox -> more drive"}
+    NSD:   {sign: '+', confidence: text, why: "lower S/D resistance"}
+    NLDD:  {sign: '+', confidence: text, why: "lower extension resistance"}
+    NHALO: {sign: '-', confidence: emp,  why: "halo raises Vt/scattering -> less drive"}
+    NCH:   {sign: '-', confidence: text, why: "channel doping raises Vt -> less overdrive"}
+  IOFF_A_per_um:
+    LG:    {sign: '-', confidence: text, why: "longer channel -> exponentially less SCE leakage"}
+    NHALO: {sign: '-', confidence: emp,  why: "halo blocks punch-through (until BTBT takes over at very high halo)"}
+    NCH:   {sign: '-', confidence: text, why: "higher Vt -> less subthreshold leakage"}
+    TOX:   {sign: '+', confidence: text, why: "thicker oxide -> worse gate control -> more leakage"}
+    XJSD:  {sign: '+', confidence: text, why: "deeper junction -> worse SCE"}
+  SS_mV_per_dec:
+    TOX:   {sign: '+', confidence: text, why: "SS = ln10*kT/q*(1+Cdep/Cox); thin TOX -> Cox up -> SS down"}
+    NCH:   {sign: '+', confidence: text, why: "higher channel doping -> Cdep up -> SS up"}
+    LG:    {sign: '-', confidence: text, why: "longer channel kills SCE contribution to SS"}
+  DIBL_mV_per_V:
+    LG:    {sign: '-', confidence: text, why: "DIBL is the canonical SCE; dies with channel length"}
+    NHALO: {sign: '-', confidence: text, why: "halo shields the drain field"}
+    TOX:   {sign: '+', confidence: text, why: "weaker gate control -> more drain influence"}
+    XJSD:  {sign: '+', confidence: text, why: "deeper junction couples drain deeper"}
+  intrinsic_gain:
+    LG:    {sign: '+', confidence: emp,  why: "less channel-length modulation -> lower gds -> higher gm/gds"}
+    NHALO: {sign: '-', confidence: emp,  why: "halo raises output conductance via DIBL at the operating point"}
+    TOX:   {sign: '-', confidence: text, why: "thin oxide -> higher gm at same gds"}
+  Ron_Ohm_um:
+    LG:    {sign: '+', confidence: text, why: "channel resistance scales with length"}
+    NSD:   {sign: '-', confidence: text, why: "S/D resistance in series"}
+    NLDD:  {sign: '-', confidence: text, why: "extension resistance in series"}
+    TOX:   {sign: '+', confidence: text, why: "less inversion charge at same Vg"}
+  gm_peak_S_per_um:
+    LG:    {sign: '-', confidence: text, why: "gm ~ Cox*W*vsat, improves at short LG"}
+    TOX:   {sign: '-', confidence: text, why: "gm proportional to Cox"}
+  Vt_V:
+    NCH:   {sign: '+', confidence: text, why: "textbook Vt(Na)"}
+    NHALO: {sign: '+', confidence: emp,  why: "halo adds effective channel doping"}
+    TOX:   {sign: '+', confidence: text, why: "Vt term Qdep/Cox grows with TOX"}
+
+notes:
+  units: "ION/IOFF A/um; SS mV/dec; DIBL mV/V; Ron Ohm.um; gm S/um; Vt V"
+  temperature: "campaign decks run T=350 K; invariant ss_boltzmann uses T_K from the spec operating block"
+  scope: "signs are first-order/monotone-region only; the optimizer explores the full landscape -- levers only bias SEEDS and audit trends, they never constrain the search"

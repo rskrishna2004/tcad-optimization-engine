@@ -1,0 +1,40 @@
+# ============================================================
+# TCADOpt .gitignore
+# Keeps the repository clean: no run artifacts, no simulator
+# files, no vendor-copyrighted material, no local clutter.
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- Simulator files (NEVER commit vendor-copyrighted decks/outputs) ---
+*.scm
+*.cmd
+*.par
+*.plt
+*.tdr
+*.log
+*.gtree
+*.grid
+*.dat
+
+# --- Campaign run artifacts (personal outputs, not engine code) ---
+results/
+runs/
+*.db
+*.sqlite
+
+# --- Editor / OS clutter ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

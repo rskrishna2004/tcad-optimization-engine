@@ -1,0 +1,79 @@
+# nmos_planar_pareto.yaml
+# GENERALIZATION PROOF. Identical to nmos_planar_caps.yaml in device, parameters,
+# constraints, models, and fidelity -- the ONLY difference is the objectives block:
+# instead of maximizing ION at three fixed IOFF caps, request the full ION-vs-IOFF
+# Pareto front. Same engine, ZERO code change. The certified hp/std/lp champions must
+# appear as points ON the produced front (self-validation against ground truth).
+# $Id: nmos_planar_pareto.yaml, 2026/06/18 [YOUR NAME] $
+
+problem_id: hackathon2025_nmos_planar_pareto
+device_class: planar_bulk_mosfet
+
+operating:
+  T_K: 350
+  supplies: {VDD: 1.0, VB: 0.0}
+  sweep: {electrode: gate, from: 0.0, to: 1.0, drain_at: 1.0}
+
+parameters:                              # (identical to nmos_planar_caps.yaml)
+  LG:     [0.040, 0.20,  lin, um]
+  TOX:    [0.0016, 0.004, lin, um]
+  LSP:    [0.010, 0.060, lin, um]
+  NSD:    [5.0e19, 3.0e20, log, cm-3]
+  XJSD:   [0.025, 0.060, lin, um]
+  LATSD:  [0.10, 0.90, lin, ratio]
+  NLDD:   [1.0e19, 2.0e20, log, cm-3]
+  XJLDD:  [0.0065, 0.040, lin, um]
+  LATLDD: [0.30, 0.90, lin, ratio]
+  NHALO:  [3.0e17, 5.0e18, log, cm-3]
+  DHALO:  [0.008, 0.060, lin, um]
+  SHALO:  [0.0138, 0.20, lin, um]
+  WHALO:  [0.010, 0.060, lin, um]
+  NCH:    [1.0e16, 5.0e18, log, cm-3]
+  XCH:    [0.020, 0.080, lin, um]
+  NSUB:   [1.0e16, 1.0e18, log, cm-3]
+  NPOLY:  [1.0e20, 1.0e21, log, cm-3]
+  LSD:    {fixed: 0.15, unit: um}
+  HPOLY:  {fixed: 0.10, unit: um}
+  HSUB:   {fixed: 0.80, unit: um}
+
+constraints:
+  hard:
+    - LG   >= 0.040
+    - TOX  >= 0.0016
+    - XJSD >= 0.025
+    - gate_material == n_poly
+  coupled:
+    - NCH >= 1.15 * NSUB
+
+# ---- THE ONLY MEANINGFUL DIFFERENCE FROM nmos_planar_caps.yaml ----
+objectives:
+  mode: pareto                           # -> multi-objective (ParEGO now; qNEHVI if BoTorch lands)
+  front:
+    - {metric: ION,  sense: max}
+    - {metric: IOFF, sense: min}         # true tradeoff axis (no fixed cap)
+  report: [gm_peak, SS_mV_per_dec, DIBL] # carried/annotated along the front
+  reference_points:                      # our champions must land on the front
+    - {label: hp,  ION: 4.543e-4, IOFF: 9.363e-8}
+    - {label: std, ION: 3.653e-4, IOFF: 9.206e-9}
+    - {label: lp,  ION: 2.742e-4, IOFF: 9.250e-10}
+# -------------------------------------------------------------------
+
+models:
+  band2band:    modifiedHurkx
+  mobility:     [DopingDependence, "Enormal(IALMob)", HighFieldSaturation]
+  recombination: [SRH, Auger]
+  statistics:   Fermi
+  intrinsic:    "EffectiveIntrinsicDensity(OldSlotboom)"
+
+fidelity:
+  search_mesh: standard
+  verify_mesh_refine: 2.0
+  verify_fidelity: [btbt_off_bound, nonlocal_path]
+  verify_thresholds: {mesh_shift_pct: 10, btbt_frac_pct: 5}
+
+budget: {max_evals: 700, parallel: 30, wall_clock_h: 8}   # a front needs more evals than 3 points
+
+# Proof acceptance:
+#  (1) the produced Pareto front is non-dominated and monotone (ION up as IOFF up);
+#  (2) hp/std/lp lie ON or BELOW the front (front dominates or matches hand-tuned points);
+#  (3) certify 3-4 representative front points (mesh + fidelity + coherence + constraints).

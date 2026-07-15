@@ -1,0 +1,72 @@
+# nmos_planar_caps.yaml
+# Hackathon-2025 problem as a declarative spec. REGRESSION GROUND TRUTH:
+# the engine must reproduce the certified champions:
+#   hp  ION>=4.543e-4 @ IOFF<=1e-7   std ION>=3.653e-4 @ IOFF<=1e-8   lp ION>=2.742e-4 @ IOFF<=1e-9
+# $Id: nmos_planar_caps.yaml, 2026/06/18 [YOUR NAME] $
+
+problem_id: hackathon2025_nmos_planar_caps
+device_class: planar_bulk_mosfet         # n-type; selects template + NMOS prior pack
+
+operating:
+  T_K: 350
+  supplies: {VDD: 1.0, VB: 0.0}
+  sweep: {electrode: gate, from: 0.0, to: 1.0, drain_at: 1.0}   # IdVg at VD=VDD
+
+parameters:                              # NAME: [lo, hi, scale, unit]
+  LG:     [0.040, 0.20,  lin, um]        # hard wall lo = 0.040
+  TOX:    [0.0016, 0.004, lin, um]       # EOT >= 1.6 nm (SiO2)
+  LSP:    [0.010, 0.060, lin, um]
+  NSD:    [5.0e19, 3.0e20, log, cm-3]
+  XJSD:   [0.025, 0.060, lin, um]        # hard wall lo = 0.025 (Xj)
+  LATSD:  [0.10, 0.90, lin, ratio]       # lateral/vertical straggle ratio
+  NLDD:   [1.0e19, 2.0e20, log, cm-3]
+  XJLDD:  [0.0065, 0.040, lin, um]
+  LATLDD: [0.30, 0.90, lin, ratio]
+  NHALO:  [3.0e17, 5.0e18, log, cm-3]
+  DHALO:  [0.008, 0.060, lin, um]
+  SHALO:  [0.0138, 0.20, lin, um]
+  WHALO:  [0.010, 0.060, lin, um]
+  NCH:    [1.0e16, 5.0e18, log, cm-3]
+  XCH:    [0.020, 0.080, lin, um]
+  NSUB:   [1.0e16, 1.0e18, log, cm-3]
+  NPOLY:  [1.0e20, 1.0e21, log, cm-3]
+  LSD:    {fixed: 0.15, unit: um}
+  HPOLY:  {fixed: 0.10, unit: um}
+  HSUB:   {fixed: 0.80, unit: um}
+
+constraints:
+  hard:
+    - LG   >= 0.040
+    - TOX  >= 0.0016
+    - XJSD >= 0.025
+    - gate_material == n_poly
+  coupled:
+    - NCH >= 1.15 * NSUB                  # generalized profile-coherence rule
+
+objectives:
+  - {metric: ION,     sense: max}
+  - {metric: gm_peak, sense: max, weight: 0.30}
+  - {metric: IOFF,    sense: max, penalty: hard, cap_sweep: [1.0e-7, 1.0e-8, 1.0e-9]}
+  # cap_sweep -> three campaigns (hp/std/lp). Score = log10(ION) + 0.30*log10(gm)
+  #              with hard penalty when IOFF > cap.
+
+models:
+  band2band:    modifiedHurkx            # search model; verify swaps to nonlocal_path
+  mobility:     [DopingDependence, "Enormal(IALMob)", HighFieldSaturation]
+  recombination: [SRH, Auger]
+  statistics:   Fermi
+  intrinsic:    "EffectiveIntrinsicDensity(OldSlotboom)"
+
+fidelity:
+  search_mesh: standard
+  verify_mesh_refine: 2.0
+  verify_fidelity: [btbt_off_bound, nonlocal_path]
+  verify_thresholds: {mesh_shift_pct: 10, btbt_frac_pct: 5}
+
+budget: {max_evals: 500, parallel: 30, wall_clock_h: 6}
+
+# Regression acceptance (locked from the verified build):
+regression:
+  hp:  {cap: 1.0e-7, ION_min: 4.54e-4, IOFF_max: 1.0e-7}
+  std: {cap: 1.0e-8, ION_min: 3.65e-4, IOFF_max: 1.0e-8}
+  lp:  {cap: 1.0e-9, ION_min: 2.74e-4, IOFF_max: 1.0e-9}

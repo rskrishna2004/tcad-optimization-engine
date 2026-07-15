@@ -1,0 +1,6 @@
+# TCADOpt Python dependencies
+# Install with:  pip install -r requirements.txt
+
+numpy>=1.18
+scipy>=1.5
+PyYAML>=5.3

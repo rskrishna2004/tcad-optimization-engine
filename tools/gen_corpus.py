@@ -1,0 +1,161 @@
+"""Generate the Tier-0 tranche of the 50-problem corpus.
+
+Tier-0 = a new objective/metric/target on the EXISTING planar N/P templates with a
+single IdVg sweep -- no new deck, no new code. This emits clean, compilable problem
+specs from a compact curated table (the durable artifact: add a row -> new problem).
+Tier-1 IdVd problems (intrinsic gain, Ron) are now emitted too (measurement: idvd
+routes the campaign to the two-curve output-characteristic deck). DIBL/AC remain
+in design/PROBLEM_CORPUS.md until their drivers/campaign wiring land.
+
+Run: cd ~/tcad_opt && python3 -m tools.gen_corpus      (writes problems/corpus/*.yaml)
+"""
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+OUT = os.path.join(ROOT, "problems", "corpus")
+
+PARAM_BLOCK = """parameters:
+  LG:     [0.040, 0.20,  lin, um]
+  TOX:    [0.0016, 0.004, lin, um]
+  LSP:    [0.010, 0.060, lin, um]
+  NSD:    [5.0e19, 3.0e20, log, cm-3]
+  XJSD:   [0.025, 0.060, lin, um]
+  LATSD:  [0.10, 0.90, lin, ratio]
+  NLDD:   [1.0e19, 2.0e20, log, cm-3]
+  XJLDD:  [0.0065, 0.040, lin, um]
+  LATLDD: [0.30, 0.90, lin, ratio]
+  NHALO:  [3.0e17, 5.0e18, log, cm-3]
+  DHALO:  [0.008, 0.060, lin, um]
+  SHALO:  [0.0138, 0.20, lin, um]
+  WHALO:  [0.010, 0.060, lin, um]
+  NCH:    [1.0e16, 5.0e18, log, cm-3]
+  XCH:    [0.020, 0.080, lin, um]
+  NSUB:   [1.0e16, 1.0e18, log, cm-3]
+  NPOLY:  [1.0e20, 1.0e21, log, cm-3]
+  LSD:    {fixed: 0.15, unit: um}
+  HPOLY:  {fixed: 0.10, unit: um}
+  HSUB:   {fixed: 0.80, unit: um}"""
+
+TAIL = """models:
+  band2band:    modifiedHurkx
+  mobility:     [DopingDependence, "Enormal(IALMob)", HighFieldSaturation]
+  recombination: [SRH, Auger]
+  statistics:   Fermi
+  intrinsic:    "EffectiveIntrinsicDensity(OldSlotboom)"
+
+fidelity:
+  search_mesh: standard
+  verify_mesh_refine: 2.0
+  verify_fidelity: [btbt_off_bound, nonlocal_path]
+  verify_thresholds: {mesh_shift_pct: 10, btbt_frac_pct: 5}
+
+budget: {max_evals: 400, parallel: 30, wall_clock_h: 4}"""
+
+
+def _v(x):
+    if isinstance(x, str):
+        return x
+    if isinstance(x, float) and (abs(x) < 1e-3 or abs(x) >= 1e4):
+        return "%.1e" % x
+    return repr(x)
+
+
+def fmt_objectives(objs):
+    out = []
+    for o in objs:
+        out.append("  - {%s}" % ", ".join("%s: %s" % (k, _v(v)) for k, v in o.items()))
+    return "\n".join(out)
+
+
+# ---- the curated Tier-0 problem table (objective shapes; emitted for N and P) ----
+# id_targets: currents (A/um) the FoM library must compute gm/Id at, for this problem.
+TABLE = [
+    ("ion_hp", "digital drive, 1e-7 leakage cap", [],
+     [{"metric": "ION", "sense": "max"}, {"metric": "IOFF", "cap": 1.0e-7}]),
+    ("ion_lp", "digital drive, 1e-9 leakage cap", [],
+     [{"metric": "ION", "sense": "max"}, {"metric": "IOFF", "cap": 1.0e-9}]),
+    ("ratio_max", "switch quality: maximize ION/IOFF", [],
+     [{"metric": "ION_IOFF_ratio", "sense": "max"},
+      {"metric": "ION", "floor": 5.0e-5, "penalty": 4.0}]),
+    ("gmid_10uA", "analog efficiency gm/Id at 10uA", [1.0e-5],
+     [{"metric": "gm_over_Id_at_10uA", "sense": "max"},
+      {"metric": "IOFF", "cap": 1.0e-9},
+      {"metric": "ION", "floor": 5.0e-5, "penalty": 4.0}]),
+    ("gmid_1uA", "weak-inversion efficiency gm/Id at 1uA", [1.0e-6],
+     [{"metric": "gm_over_Id_at_1uA", "sense": "max"},
+      {"metric": "IOFF", "cap": 1.0e-9},
+      {"metric": "ION", "floor": 5.0e-5, "penalty": 4.0}]),
+    ("ss_min", "steepest subthreshold at fixed drive", [],
+     [{"metric": "SS_mV_per_dec", "sense": "min"},
+      {"metric": "ION", "floor": 1.0e-4, "penalty": 4.0}]),
+    ("vt_target", "hit |Vt| = 0.30 V while maximizing drive", [],
+     [{"metric": "Vt", "sense": "target", "target": 0.30, "weight": 10.0, "domain": "lin"},
+      {"metric": "ION", "sense": "max", "weight": 1.0}]),
+    ("gm_max", "peak transconductance at 1e-8 leakage cap", [],
+     [{"metric": "gm_peak", "sense": "max"}, {"metric": "IOFF", "cap": 1.0e-8}]),
+]
+
+
+# ---- Tier-1 IdVd table: needs the output-characteristic driver (measurement=idvd) ----
+# Scored purely on IdVd FoMs (no IOFF here); a drive floor (Idsat) keeps devices useful.
+TABLE_IDVD = [
+    ("gain_max", "intrinsic gain gm/gds max at a drive floor", [],
+     [{"metric": "intrinsic_gain", "sense": "max"},
+      {"metric": "Idsat", "floor": 1.0e-4, "penalty": 4.0}]),
+    ("ron_min", "on-resistance min at a drive floor", [],
+     [{"metric": "Ron", "sense": "min"},
+      {"metric": "Idsat", "floor": 1.5e-4, "penalty": 4.0}]),
+]
+
+DEVICES = [
+    ("nmos", "planar_bulk_mosfet", "1.0", "n", "n_poly"),
+    ("pmos", "planar_bulk_pmos", "-1.0", "p", "p_poly"),
+]
+
+
+def _write_spec(key, note, id_targets, objs, dtag, dclass, vdd, sign, gate,
+                measurement, sweep_elec):
+    pid = "%s_%s" % (dtag, key)
+    it = "[%s]" % ", ".join(_v(x) for x in id_targets) if id_targets else "[]"
+    meas_line = "measurement: %s\n" % measurement if measurement != "idvg" else ""
+    spec = (
+        "# %s.yaml  [auto-generated by gen_corpus.py -- %s]\n"
+        "problem_id: %s\ndevice_class: %s\n%s\n"
+        "operating:\n  T_K: 350\n  supplies: {VDD: %s, VB: 0.0}\n"
+        "  sweep: {electrode: %s, from: 0.0, to: %s, drain_at: %s}\n"
+        "  bias_sign: %s\n\n"
+        "metric_extraction:\n  vt_icrit_A_per_um: 1.0e-7\n"
+        "  gm_over_Id_targets_A_per_um: %s\n\n"
+        "%s\n\n"
+        "constraints:\n  hard:\n    - LG   >= 0.040\n    - TOX  >= 0.0016\n"
+        "    - XJSD >= 0.025\n    - gate_material == %s\n"
+        "  coupled:\n    - NCH >= 1.15 * NSUB\n\n"
+        "objectives:\n%s\n\n%s\n"
+        % (pid, note, pid, dclass, meas_line, vdd, sweep_elec, vdd, vdd, sign,
+           it, PARAM_BLOCK, gate, fmt_objectives(objs), TAIL))
+    open(os.path.join(OUT, pid + ".yaml"), "w").write(spec)
+    return pid
+
+
+def emit():
+    if not os.path.isdir(OUT):
+        os.makedirs(OUT)
+    n, rows = 0, []
+    groups = [(TABLE, "idvg", "gate"), (TABLE_IDVD, "idvd", "drain")]
+    for table, measurement, sweep_elec in groups:
+        for key, note, id_targets, objs in table:
+            for dtag, dclass, vdd, sign, gate in DEVICES:
+                pid = _write_spec(key, note, id_targets, objs, dtag, dclass,
+                                  vdd, sign, gate, measurement, sweep_elec)
+                n += 1
+                rows.append((pid, note))
+    return n, rows
+
+
+if __name__ == "__main__":
+    n, rows = emit()
+    print("emitted %d Tier-0 corpus specs -> %s\n" % (n, OUT))
+    for pid, note in rows:
+        print("  %-22s %s" % (pid, note))

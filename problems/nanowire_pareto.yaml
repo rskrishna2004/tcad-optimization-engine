@@ -1,0 +1,44 @@
+problem_id: nanowire_pareto
+device_class: nanowire_gaa_nmos
+measurement: idvg
+operating:
+  T_K: 300
+  supplies: {VDD: 0.7, VB: 0.0}
+  sweep: {electrode: gate, from: 0.0, to: 0.7, drain_at: 0.7}
+  bias_sign: n
+metric_extraction:
+  vt_icrit_A_per_um: 1.0e-9
+  gm_over_Id_targets_A_per_um: []
+parameters:
+  NSD:    [2.0e20, 4.0e20, log, cm-3]
+  DSD:    [0.008, 0.018, lin, um]
+  NEXT_S: [8.0e19, 4.0e20, log, cm-3]
+  OFF_S:  [0.0, 0.0045, lin, um]
+  NEXT_D: [1.0e19, 2.5e20, log, cm-3]
+  OFF_D:  [0.0, 0.0040, lin, um]
+  SEXT:   [0.0008, 0.0030, lin, um]
+  RSD:    [0.003, 0.010, lin, um]
+  TIL:    [0.0004, 0.0007, lin, um]
+  NHALO_S: [1.0e15, 8.0e19, log, cm-3]
+constraints:
+  hard:
+    - NSD <= 4.0e20
+    - gate_material == metal_wf
+  coupled: []
+objectives:
+  - {metric: ION, sense: max, weight: 1.0}
+  - {metric: IOFF, sense: min, weight: 1.0}
+  - {metric: gm_peak, sense: max, weight: 0.5}
+models:
+  band2band: modifiedHurkx
+  mobility: [DopingDependence, Enormal, HighFieldSaturation]
+  recombination: [SRH, Auger]
+  statistics: Fermi
+  stress: "Piezo 1GPa tensile transport"
+  quantum: [eQuantumPotential, hQuantumPotential]
+fidelity:
+  search_mesh: standard
+  verify_mesh_refine: 2.0
+  verify_fidelity: [btbt_off_bound, nonlocal_path]
+  verify_thresholds: {mesh_shift_pct: 12, btbt_frac_pct: 5}
+budget: {max_evals: 500, parallel: 64, wall_clock_h: 10}
