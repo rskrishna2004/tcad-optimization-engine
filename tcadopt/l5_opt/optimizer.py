@@ -182,12 +182,40 @@ class ScipyGPBackend(object):
         self.tr.restart()
 
 
+def make_backend(space, prefer="auto", legacy_dir=None, **kw):
+    """Choose an optimizer backend.
+
+    prefer='auto'    -- use BoTorch if torch/botorch import, else scipy (default)
+    prefer='botorch' -- require BoTorch; raise if unavailable
+    prefer='scipy'   -- always the dependency-light scipy backend
+
+    Override at runtime without editing code:  export TCADOPT_BACKEND=scipy
+    BoTorch needs Python>=3.11 + torch; the scipy backend needs only numpy and
+    scipy and runs on Python 3.6, which is why 'auto' degrades silently instead
+    of failing. A campaign is never blocked by a missing optional dependency.
+    """
+    prefer = os.environ.get("TCADOPT_BACKEND", prefer).lower()
+    if prefer == "scipy":
+        return ScipyGPBackend(space, legacy_dir=legacy_dir)
+    try:
+        from .botorch_backend import BoTorchBackend
+        return BoTorchBackend(space, **kw)
+    except Exception as exc:
+        if prefer == "botorch":
+            raise
+        if os.environ.get("TCADOPT_VERBOSE_BACKEND"):
+            print("    [backend] botorch unavailable (%s) -> scipy backend"
+                  % type(exc).__name__)
+        return ScipyGPBackend(space, legacy_dir=legacy_dir)
+
+
 class Optimizer(object):
     """Front door used by the orchestrator. Backend is swappable."""
 
-    def __init__(self, space, backend=None, legacy_dir=None):
+    def __init__(self, space, backend=None, legacy_dir=None, prefer="auto"):
         self.space = space
-        self.backend = backend or ScipyGPBackend(space, legacy_dir=legacy_dir)
+        self.backend = backend or make_backend(space, prefer=prefer,
+                                               legacy_dir=legacy_dir)
 
     def propose(self, history_X, history_y, n, mode="bo_round", seed=0,
                 constraints_data=None):
@@ -223,3 +251,17 @@ class Optimizer(object):
     @property
     def backend_name(self):
         return getattr(self.backend, "name", "unknown")
+
+    @property
+    def tr(self):
+        """Expose the backend's trust region on the facade.
+
+        BUGFIX v1.0.1: run_campaign._convergence_report does
+        getattr(getattr(opt, "tr", None), "restarts", 0) where `opt` is this
+        Optimizer, not the backend. Optimizer had no `tr`, so the getattr
+        chain always fell through to the default and every campaign printed
+        'basin restarts: 0' no matter how many trust-region restarts actually
+        happened. The restart machinery was working; the report was blind
+        to it.
+        """
+        return getattr(self.backend, "tr", None)
