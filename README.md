@@ -48,7 +48,7 @@ TCADOpt is organized as a layered pipeline. Each layer has one clear job, and re
 | Decks | Turn a candidate design into a simulator input (the part you connect to your simulator) |
 | Exec | Run the simulator in parallel batches and parse the electrical results |
 | Knowledge | Check every result against device-physics laws; seed the search with physics |
-| Optimizer | The Bayesian optimization core: surrogate model, trust region, acquisition |
+| Optimizer | The Bayesian optimization core: surrogate model, trust region, acquisition (two swappable backends, see [docs/OPTIMIZER_BACKENDS.md](docs/OPTIMIZER_BACKENDS.md)) |
 | Verify | Certify a design against fidelity checks (mesh, models, constraints) |
 | Memory | Store every simulation in a database so nothing is ever lost or repeated |
 | Orchestration | Run a full campaign or a Pareto front from start to finish |
@@ -111,14 +111,34 @@ Read them roughly in this order:
 - [Writing a problem file](docs/WRITING_A_PROBLEM.md) — the YAML format, every field explained
 - [Tuning](docs/TUNING.md) — how to set parallelism and budget for your machine and your problem
 - [Architecture](docs/ARCHITECTURE.md) — how every layer of the engine works
+- [Optimizer backends](docs/OPTIMIZER_BACKENDS.md) — the default backend vs the optional BoTorch backend, and when to use which
 - [The physics knowledge base](docs/PHYSICS_KNOWLEDGE.md) — how physics seeding and the guard work
 - [Case study](docs/CASE_STUDY.md) — a real nanowire optimization, including the lessons learned
 
 ---
 
+## Optional: the high-power optimizer backend
+
+The optimization core has two interchangeable backends. The default needs only
+numpy and scipy and runs on Python 3.6, which matters because TCAD solver hosts
+are often locked to an old interpreter. An optional backend built on
+[BoTorch](https://github.com/meta-pytorch/botorch) uses a log-space acquisition
+and gradient-based acquisition optimization, and is selected automatically when
+its dependencies are present:
+
+```bash
+pip install -r requirements-botorch.txt    # needs Python 3.11+
+```
+
+No BoTorch source is copied into this repository; it is called as a dependency.
+See [`NOTICE`](NOTICE) for attribution and [`docs/OPTIMIZER_BACKENDS.md`](docs/OPTIMIZER_BACKENDS.md)
+for what changes and the measured comparison.
+
+---
+
 ## Project status
 
-This is **version 1.0**, the first public release. The engine is functional and has been used on real device optimization campaigns. It is under active development and new capabilities will be added over time. See [`CHANGELOG.md`](CHANGELOG.md).
+This is **version 1.0.1**. The engine is functional and has been used on real device optimization campaigns. It is under active development and new capabilities will be added over time. See [`CHANGELOG.md`](CHANGELOG.md).
 
 Feedback, issues, and contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
@@ -127,6 +147,8 @@ Feedback, issues, and contributions are welcome. See [`CONTRIBUTING.md`](CONTRIB
 ## License
 
 Released under the MIT License. See [`LICENSE`](LICENSE). You are free to use, modify, and build on this, including commercially, as long as you keep the copyright notice.
+
+Third-party components used by the optional optimizer backend are credited in [`NOTICE`](NOTICE).
 
 ---
 

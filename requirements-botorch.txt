@@ -1,0 +1,13 @@
+# OPTIONAL dependencies for the high-power BoTorch optimizer backend.
+#
+# TCADOpt runs fully without these -- the default scipy backend needs only
+# requirements.txt (numpy, scipy, PyYAML) and works on Python 3.6.
+#
+# These require Python >= 3.11. If your TCAD workstation runs an older Python,
+# do NOT install these there; the default backend is the supported path.
+#
+#   pip install -r requirements-botorch.txt
+#
+botorch>=0.12
+torch>=2.4
+gpytorch>=1.13
