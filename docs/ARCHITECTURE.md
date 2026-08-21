@@ -63,7 +63,9 @@ Key module: `physics_guard.py`. The rules themselves live in a human-readable kn
 ### l5_opt — the optimizer core
 The Bayesian optimization brain. It fits a Gaussian process surrogate to all valid simulations so far, then chooses the next batch of designs by maximizing an acquisition function that trades off predicted value against uncertainty. It runs inside a trust region that shrinks when progress stalls and restarts from unexplored regions when the region collapses, which protects against getting stuck in a local optimum. It supports feasibility-aware search, so for capped problems it models where the cap is likely to be violated and avoids wasting simulations there.
 
-Key module: `optimizer.py` (the trust-region backend and the optimizer facade). The surrogate model itself is in `gp.py` (see note on file locations below).
+Key module: `optimizer.py` (the trust-region schedule, the backend selector, and the optimizer facade). The default backend's surrogate is in `gp.py` (see note on file locations below).
+
+The backend is swappable behind `Optimizer`. `ScipyGPBackend` is the default and needs only numpy and scipy. `BoTorchBackend` (`botorch_backend.py`) is optional and needs Python 3.11+; it replaces the acquisition and the acquisition search while keeping the same trust-region schedule. Both implement the same `propose` / `exhausted` / `force_restart` interface, so the orchestrator is unchanged either way. See `docs/OPTIMIZER_BACKENDS.md`.
 
 ### l6_verify — the verification layer
 Certifies a design against fidelity checks: does the result hold up on a finer mesh, are the physics models self-consistent, are all constraints satisfied. Used to confirm that a champion is trustworthy and not a numerical artifact of a coarse mesh.
