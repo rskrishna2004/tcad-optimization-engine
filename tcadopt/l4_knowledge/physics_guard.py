@@ -25,9 +25,20 @@ except ImportError:
     _HAVE_YAML = False
 
 _KB_CACHE = None
-_DEF_KB = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "knowledge", "physics_rules.yaml")
+# BUGFIX (audit D1): this used to point at <repo_root>/knowledge/physics_rules.yaml,
+# a directory that does not exist. The KB ships NEXT TO this module. Because
+# load_kb() swallows a missing file and returns an empty KB, the failure was
+# silent: validate() passed every trial (including SS = 20 mV/dec at 350 K, which
+# is below the Boltzmann floor), and physics_seeds() returned [] on every campaign.
+# Both advertised "physics-aware" features were inert. The first path that exists
+# wins, so an installation that really does keep a top-level knowledge/ still works.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_KB_CANDIDATES = (
+    os.path.join(_HERE, "physics_rules.yaml"),                      # shipped location
+    os.path.join(os.path.dirname(os.path.dirname(_HERE)),
+                 "knowledge", "physics_rules.yaml"),                # legacy location
+)
+_DEF_KB = next((p for p in _KB_CANDIDATES if os.path.exists(p)), _KB_CANDIDATES[0])
 
 # metric aliases the invariant expressions may reference
 _NUM_LITERAL = re.compile(r"\d+\.?\d*(?:[eE][-+]?\d+)?")   # strip 5.0e-3 etc.

@@ -6,3 +6,4 @@ remain drop-in behind these interfaces.
 """
 
 from .certify import certify, Certificate, constraint_audit, mesh_shift_pct, btbt_fraction_pct
+from .identifiability import jacobian, analyse, report

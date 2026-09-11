@@ -7,3 +7,4 @@ remain drop-in behind these interfaces.
 
 from .run_campaign import run_campaign
 from .run_pareto import run_pareto, pareto_front, champions_on_front
+from .run_fit import run_stage, load_frozen, save_frozen

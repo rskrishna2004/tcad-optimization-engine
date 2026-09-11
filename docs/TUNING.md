@@ -2,7 +2,7 @@
 
 TCADOpt runs many simulations in parallel. How many, and how many in total, are the two settings you must choose for your own hardware and your own simulator. Getting them right is the difference between using your machine fully and either overloading it or wasting it. This guide explains every user-adjustable setting, what it does, and how to choose it.
 
-All of these live in the `budget:` section of your problem YAML, and every one can be overridden from the command line.
+All of these live in the `budget:` section of your problem YAML, and every one can be overridden from the command line. They mean the same thing for a design campaign and for an extraction stage; the numbers you should pick are different, and section "Tuning an extraction" at the end says how.
 
 ---
 
@@ -92,14 +92,99 @@ A simulation that exceeds its timeout is killed and counted as a failure, so the
 
 ---
 
+## Tuning an extraction
+
+An extraction is many small campaigns rather than one large one, so the
+arithmetic changes in three ways.
+
+### Each evaluation is several simulator runs, not one
+
+A design evaluation is one structure build plus one device solve. An extraction
+evaluation is **one circuit-simulator run per target sweep**. A stage scored on
+four sweeps costs four runs per candidate. Circuit simulations are seconds
+rather than minutes, so this is still far cheaper than a design campaign — but
+when you set `parallel`, remember you are launching `parallel x n_sweeps`
+processes, and count licences the same way.
+
+### Budgets are per stage, and stages are small
+
+Size each stage's `max_evals` from **that stage's** free-parameter count, not
+the total across the whole schedule:
+
+- 3 to 4 free parameters: 100 to 150 evaluations
+- 5 to 7 free parameters: 150 to 250
+- 8 to 12 free parameters: 250 to 400
+
+A five-stage schedule with four to eight parameters each therefore costs about
+700 to 900 evaluations in total — but spent as five separate, well-posed
+searches rather than one badly-posed one. That is the whole reason for staging,
+and it is cheaper as well as more meaningful.
+
+Put a `budget:` inside each stage to override the top-level one:
+
+```yaml
+stages:
+  - name: s1_electrostatics
+    budget: {parallel: 8, max_evals: 120, init_n: 24}
+```
+
+### The timeout is different
+
+Extraction uses its own timeout, because a circuit simulation that has not
+finished in a few minutes is hung rather than slow:
+
+```bash
+export TCADOPT_SPICE_TIMEOUT=300     # seconds per deck; 300 is generous
+```
+
+### Spend your first budget on stage 1
+
+Stage 1 typically has the fewest free parameters and one sweep, so it is the
+cheapest possible end-to-end test of your card, your decks, your parser and
+your targets all at once. Run it at a small budget first. If something is
+misconfigured you will find out in minutes rather than after stage 3.
+
+### If a stage will not converge, look before raising the budget
+
+More evaluations rarely fix a stalled extraction stage. Two much more likely
+causes:
+
+- **The parameters are degenerate**, so no amount of searching separates them.
+  Run the identifiability check; if it reports a pair at `|r|` near 1, the fix
+  is more measurement (another temperature, another geometry, another bias),
+  not more compute.
+- **The sweep does not contain the effect.** A stage fitting drain-induced
+  barrier lowering against a single drain bias cannot work however long it
+  runs, because the effect is defined as the difference between two biases.
+
+The two-part error tells you which half is failing: sub-threshold error in
+decades points at the electrostatics stages, on-state error in percent points
+at transport.
+
+---
+
 ## A first-run recipe
 
 If you are not sure where to start, use this for your first real campaign, then adjust:
+
+For a design campaign:
 
 ```yaml
 budget:
   parallel: 4        # raise toward your core/memory/license limit once verified
   max_evals: 200     # raise toward the table value for your parameter count
+```
+
+For an extraction, start with stage 1 only:
+
+```bash
+python -m tcadopt.l8_orch.run_fit problems/your_fit.yaml --stage 1
+```
+
+```yaml
+stages:
+  - name: s1_electrostatics
+    budget: {parallel: 4, max_evals: 100, init_n: 20}
 ```
 
 Run it, watch CPU, memory, and the "batch done: N/M ok" line. If your machine has clear headroom and simulations are succeeding, raise `parallel`. If simulations are failing often, fix your deck and ranges before raising anything. Once a single run behaves well, scale `max_evals` up to a proper search and run multiple seeds.

@@ -1,6 +1,8 @@
 # Getting Started
 
-This guide takes you from a fresh clone to running the optimizer, first on a synthetic problem that needs no simulator, and then pointing you toward connecting a real TCAD simulator.
+This guide takes you from a fresh clone to running the engine, first on synthetic problems that need no simulator at all, and then pointing you toward connecting your real tools.
+
+TCADOpt does two jobs. **Design optimization** searches a device's geometry and doping for the best electricals. **Parameter extraction** fits a compact model's parameters to reference curves from a device you already have. Both are verified below, and each has its own guide afterward.
 
 ---
 
@@ -9,6 +11,9 @@ This guide takes you from a fresh clone to running the optimizer, first on a syn
 - Python 3.6 or newer
 - The three Python packages in `requirements.txt` (numpy, scipy, PyYAML)
 - Optional, only for optimizing real devices: any TCAD simulator that provides a structure/mesh builder and an electrical device solver
+- Optional, only for extracting real model parameters: any circuit simulator that can run a SPICE netlist from the command line (the reference implementation drives HSPICE)
+
+Nothing beyond the three Python packages is needed for the two self-checks in sections 3 and 4.
 
 ---
 
@@ -27,7 +32,10 @@ python check_setup.py
 ```
 
 This confirms Python and all three dependencies (numpy, scipy, PyYAML) are
-installed and importable. If `pip install` did not work on the first try
+installed and importable, reports the engine version, and tells you which
+simulator tools are currently configured for each path. Neither tool is needed
+yet, so "NOT SET" at this stage is expected and fine. If `pip install` did not
+work on the first try
 (a very common first-run snag, especially on Windows where `pip` sometimes
 is not on the PATH), `check_setup.py` prints the exact alternative command
 to run:
@@ -46,7 +54,7 @@ just reported from deep inside the engine instead of up front.
 
 ---
 
-## 3. Run the synthetic demo (no simulator needed)
+## 3. Run the design-optimization self-check (no simulator needed)
 
 The synthetic demo replaces the physics simulator with a fast mathematical function that behaves like a device: it has an on-current-like quantity to maximize and a leakage-like quantity to keep under a cap. This lets you watch the entire optimization pipeline work in seconds on any computer.
 
@@ -87,7 +95,21 @@ What is happening, step by step:
 
 ---
 
-## 5. Run multiple seeds for global confidence
+## 5. Run the extraction self-check (no simulator needed)
+
+The extraction demo does the same favour for the other path. It replaces the circuit simulator with a stand-in transistor whose parameters carry the same names and physical roles as real compact-model ones, and it runs the complete staged extraction against it.
+
+```bash
+python examples/extraction_demo/run_demo.py
+```
+
+Three things are worth watching:
+
+- **The error is two numbers, not one.** Sub-threshold error is reported in *decades* and on-state error as a *percentage*, because drain current spans about eight decades and one measure cannot serve both ends. When a fit stalls, the two numbers say which half stalled.
+- **`phig` comes back essentially exact.** That is the gate work function, and it is what stage 1 exists to determine. The stand-in model has a hidden true value the optimizer was never given.
+- **Some parameters come back badly wrong, and that is the correct result.** The stand-in was built so that three of its parameters enter through a single sum and two more through a single product. Their individual values are simply not determined by the data. The identifiability report at the end finds exactly those pairs and says so — which the fit error can never do, because a degenerate fit fits perfectly.
+
+## 6. Run multiple seeds for global confidence
 
 Bayesian optimization cannot mathematically prove it found the global optimum on a black-box function. The practical way to gain confidence is to run several independent seeds and check they agree. The demo supports this:
 
@@ -101,11 +123,11 @@ If the champions from different seeds land in the same region, that agreement is
 
 ---
 
-## 6. Move to a real device
+## 7. Move to a real device
 
 When you are ready to optimize a real transistor, you connect the engine to your TCAD simulator by writing a small adapter. This is the only integration work required, and it is explained in full in [CONNECTING_A_SIMULATOR.md](CONNECTING_A_SIMULATOR.md).
 
-The flow for a real problem is:
+The flow for a real design problem is:
 
 1. Write a problem YAML file describing the parameters, ranges, objective, and constraints. See [WRITING_A_PROBLEM.md](WRITING_A_PROBLEM.md).
 2. Write your simulator deck template with the tunable parameters marked, and the adapter that renders a candidate into a deck, runs the simulator, and parses the electrical output. See [CONNECTING_A_SIMULATOR.md](CONNECTING_A_SIMULATOR.md).
@@ -120,8 +142,29 @@ The flow for a real problem is:
 
 ---
 
-## 7. Where to go next
+## 8. Move to a real extraction
 
+The flow for a real extraction is shorter, because there is only one tool to connect:
+
+1. Export your reference curves to CSV, one row per bias point. See [PARAMETER_EXTRACTION.md](PARAMETER_EXTRACTION.md).
+2. Point the engine at your circuit simulator:
+   ```bash
+   export TCADOPT_SPICE_TOOL="hspice"
+   ```
+3. Write a fit spec describing the target curves and the stage schedule. See [WRITING_A_PROBLEM.md](WRITING_A_PROBLEM.md).
+4. Run it:
+   ```bash
+   python -m tcadopt.l8_orch.run_fit path/to/your_fit.yaml
+   ```
+
+[EXTRACTION_TUTORIAL.md](EXTRACTION_TUTORIAL.md) walks through all four steps on a worked example, with every printed line explained.
+
+---
+
+## 9. Where to go next
+
+- To optimize a real device, end to end: [WORKFLOW.md](WORKFLOW.md)
+- To extract real model parameters, end to end: [PARAMETER_EXTRACTION.md](PARAMETER_EXTRACTION.md)
 - To understand how the engine works internally: [ARCHITECTURE.md](ARCHITECTURE.md)
 - To learn the problem file format in depth: [WRITING_A_PROBLEM.md](WRITING_A_PROBLEM.md)
 - To see how physics is used to guide and audit the search: [PHYSICS_KNOWLEDGE.md](PHYSICS_KNOWLEDGE.md)

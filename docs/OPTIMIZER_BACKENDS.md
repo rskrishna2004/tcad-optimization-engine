@@ -3,7 +3,13 @@
 The optimizer layer (`l5_opt`) has a swappable backend. Everything else in the
 engine — the problem file, the physics guard, knowledge seeding, the experiment
 database, certification, the defense dossier — is identical whichever backend
-runs. Only the way the next batch of designs is chosen changes.
+runs. Only the way the next batch of candidates is chosen changes.
+
+Both backends serve **both** jobs. A design campaign and an extraction stage
+call the same `Optimizer.propose()`, and neither backend knows or cares whether
+the vector it is proposing is a set of device dimensions or a set of
+compact-model parameters. Everything below therefore applies to extraction as
+written; where a sentence says "designs", read "candidates".
 
 There are two.
 
@@ -110,6 +116,22 @@ choose better designs is close to free.
 Both benchmarks are synthetic. They are a sanity check on the optimizer, not a
 device result — treat them as evidence the backend is worth trying on a real
 campaign, not as a claimed device improvement.
+
+## Which one for an extraction
+
+The same rule, with one extra consideration in favour of the default backend:
+an extraction stage typically has four to eight free parameters, where the
+dimensionality argument for the BoTorch backend was made at 17. At that size a
+6000-point random pool resolves the space reasonably well, and the acquisition
+does not go numerically flat as readily. The default backend is a perfectly
+good choice for extraction, and it is the one the extraction path was developed
+and validated against.
+
+The case for BoTorch on an extraction is the late-stage polish, where the trust
+region has shrunk around a good point and the differences between candidates
+are small — exactly the regime where analytic expected improvement underflows.
+If you have Python 3.11 and the dependencies, letting `auto` pick it costs
+nothing.
 
 ## Choosing on a real machine
 

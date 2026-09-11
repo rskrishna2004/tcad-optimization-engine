@@ -69,6 +69,40 @@ A long campaign ran on that structure. When the spacer was reverted to silicon n
 
 ---
 
+## A postscript from the extraction work
+
+The extraction path added in v1.1.0 was built against a different device — a
+4-sheet gate-all-around nanosheet FET — and it produced two lessons that belong
+next to the four above, because they are the same lesson in a new costume.
+
+**Lesson five: check what the tool actually ran, not what you told it to run.**
+One capacitance simulation in that project completed cleanly after eleven hours
+of wall clock: 91 points, no convergence failures, charge conservation good to
+one part in a billion. It was useless, because a stale copy of the input deck
+was sitting in the run directory and the run used a gate work function 71 mV
+away from the one every other dataset used. Nothing in the result looked wrong.
+The only evidence was one line in the log stating the value it had used. Grep
+your logs for the parameters you care about before you trust a run; a
+successful run of the wrong thing is more expensive than a failure, because a
+failure tells you.
+
+**Lesson six: a perfect fit is not evidence of a correct extraction.** If two
+parameters change the simulated curve in the same way, infinitely many pairs of
+values fit the data equally well, and the pair a tool reports is one arbitrary
+point out of an infinite set. This cannot be seen in the fit error — a
+degenerate fit fits *perfectly*. It has to be measured separately, which is
+what `l6_verify/identifiability.py` now does. The same instinct as lesson four:
+write down what you do not know, with the physics, rather than letting a
+confident-looking number stand in for it.
+
+---
+
 ## The engineering takeaway
 
 The optimizer was never the bottleneck. The bottleneck was the quality of the problem definition: the parameterization, the realism of the structure, and the choice of objective. TCADOpt makes the search efficient and honest. It cannot make a badly-posed problem into a good one. Spend your effort there first.
+
+That is as true of extraction as of design. A staged schedule that frees the
+right parameters against the right bias region will produce a model card whose
+parameters mean what their names say. One that frees everything at once will
+produce a card that matches every curve it was fitted to and misleads you
+everywhere else. The engine cannot tell the difference; you can.

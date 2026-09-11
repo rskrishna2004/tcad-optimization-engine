@@ -49,12 +49,32 @@ ACTION_HINTS = {
 }
 
 
+# Every log filename any producer in this repository actually writes.
+# runner.run_one -> tool_structure.log / tool_device.log
+# certify._build_and_run -> sde.log / sdev.log
+# (legacy names kept so an old run directory still classifies)
+_STRUCTURE_LOGS = ("tool_structure.log", "sde.log", "tool_sde.log")
+_DEVICE_LOGS = ("tool_device.log", "sdev.log", "tool_sdevice.log",
+                "hspice.lis", "tool_spice.log")
+
+
 def _read(path):
     try:
         with open(path, "r") as fh:
             return fh.read()
     except (IOError, OSError):
         return ""
+
+
+def _read_any(run_dir, names):
+    """Concatenate whichever of `names` exist. A run may leave more than one
+    (a retry, or a two-stage flow), and the signature can be in any of them."""
+    parts = []
+    for n in names:
+        t = _read(os.path.join(run_dir, n))
+        if t:
+            parts.append(t)
+    return "\n".join(parts)
 
 
 def _scan(blob, pats):
@@ -81,10 +101,16 @@ def classify(result, sde_log=None, sdevice_log=None, run_dir=None):
         return ("timeout", err)
 
     if (sde_log is None or sdevice_log is None) and run_dir:
+        # BUGFIX (audit D2): runner.run_one writes "tool_structure.log" and
+        # "tool_device.log"; certify.py writes "sde.log"/"sdev.log"; this
+        # function used to read only "tool_sde.log"/"tool_sdevice.log", which
+        # NOTHING writes. Every real failure therefore fell through to
+        # unknown_fail and ACTION_HINTS never fired. Read every name any
+        # producer in this repository actually emits.
         if sde_log is None:
-            sde_log = _read(os.path.join(run_dir, "tool_sde.log"))
+            sde_log = _read_any(run_dir, _STRUCTURE_LOGS)
         if sdevice_log is None:
-            sdevice_log = _read(os.path.join(run_dir, "tool_sdevice.log"))
+            sdevice_log = _read_any(run_dir, _DEVICE_LOGS)
 
     blob = "\n".join(t for t in (sde_log, sdevice_log) if t)
     for klass, pats in _PATTERNS:

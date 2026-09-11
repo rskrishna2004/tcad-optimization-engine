@@ -1,0 +1,156 @@
+# nsfet_gaa_fit.yaml
+# BSIM-CMG parameter extraction for the 4-sheet gate-all-around nanosheet FET,
+# fitted to validated Sentaurus DDDG reference curves.
+#
+# This is NOT a design-optimization problem. The device is fixed; what is being
+# searched is the compact model's parameter set. Read `fit:` and `stages:` as
+# "which curves must be matched" and "which parameters are allowed to move, in
+# what order".
+
+problem_id: nsfet_gaa_bsimcmg_extraction
+device_class: nanosheet_gaa
+measurement: fit
+
+operating:
+  T_K: 300.0
+  supplies: {VDD: 0.6}
+
+fit:
+  iv_targets: targets/iv_targets.csv
+  cv_targets: targets/cv_targets.csv
+  models: {nsfet_n: nsfet_n, nsfet_p: nsfet_p}
+  nf: 1
+  # Sub-threshold is scored in decades, on-state in fractional error; the split
+  # is the same constant-current level used to define Vth everywhere else in
+  # this project, so "sub-threshold" keeps one meaning throughout.
+  i_split_A_per_um: 1.0e-7
+  w_subthreshold: 1.0
+  w_on_state: 1.0
+  current_noise_floor_A: 1.0e-14
+  # Structure is MEASURED from the TCAD deck, never fitted. Letting the
+  # optimizer touch these would let it hide a current error by quietly
+  # resizing the transistor.
+  structures:
+    nsfet_n:
+      version: 111.21
+      geomod: 5
+      bulkmod: 0
+      tgaa: 5.0e-9
+      wgaa: 10.0e-9
+      tsus: 10.0e-9
+      ngaa: 4
+      nfin: 1
+      l: 12.0e-9
+      lsp: 5.0e-9
+      eot: 0.734e-9
+      toxp: 2.0e-9
+      epsrox: 3.9
+      epsrsp: 7.5
+      nbody: 1.0e21
+      nsd: 1.0e26
+    nsfet_p:
+      version: 111.21
+      geomod: 5
+      bulkmod: 0
+      tgaa: 5.0e-9
+      wgaa: 10.0e-9
+      tsus: 10.0e-9
+      ngaa: 4
+      nfin: 1
+      l: 12.0e-9
+      lsp: 5.0e-9
+      eot: 0.734e-9
+      toxp: 2.0e-9
+      epsrox: 3.9
+      epsrsp: 7.5
+      nbody: 1.0e21
+      nsd: 1.0e26
+
+budget: {parallel: 8, max_evals: 160, max_restarts: 2}
+
+stages:
+
+  # ---------------------------------------------------------------- stage 1
+  # Long-channel electrostatics. Scored ONLY on the low-drain IdVg sweep,
+  # where the sub-threshold slope and the threshold are set by the gate and
+  # the body, and where mobility and series resistance are almost irrelevant.
+  # PHIG is the threshold knob: BSIM-CMG is a surface-potential model and has
+  # no VTH0 at all, so the threshold is moved by the gate work function.
+  - name: s1_electrostatics
+    sweeps: [nsfet_n_IdVg_0.05]
+    budget: {parallel: 8, max_evals: 120, init_n: 24}
+    parameters:
+      phig:  [4.35, 4.65, lin, eV]
+      cit:   [0.0,  5.0e-3, lin, F/m2]
+      cdsc:  [0.0,  1.0e-2, lin, F/m2]
+      nfactor: [0.0, 3.0, lin, "-"]
+
+  # ---------------------------------------------------------------- stage 2
+  # Short-channel effects. Now scored on BOTH drain biases at once: DIBL is
+  # by definition the DIFFERENCE between them, so a single sweep cannot
+  # determine these parameters no matter how well it is fitted.
+  - name: s2_short_channel
+    sweeps: [nsfet_n_IdVg_0.05, nsfet_n_IdVg_0.60]
+    budget: {parallel: 8, max_evals: 140, init_n: 30}
+    parameters:
+      dvt0:  [0.0, 5.0,  lin, "-"]
+      dvt1:  [0.1, 2.0,  lin, "-"]
+      eta0:  [0.0, 0.5,  lin, "-"]
+      dsub:  [0.1, 2.0,  lin, "-"]
+      cdscd: [0.0, 1.0e-2, lin, F/m2]
+
+  # ---------------------------------------------------------------- stage 3
+  # Transport: mobility and series resistance, scored on the on-state where
+  # they dominate. RDSMOD=1 makes the source/drain resistance an explicit,
+  # separately extractable element instead of being folded into mobility --
+  # which is what keeps U0 meaning mobility.
+  - name: s3_transport
+    sweeps: [nsfet_n_IdVg_0.05, nsfet_n_IdVg_0.60,
+             nsfet_n_IdVd_0.60, nsfet_n_IdVd_0.45]
+    budget: {parallel: 8, max_evals: 180, init_n: 36}
+    parameters:
+      u0:      [0.005, 0.08, log, m2/Vs]
+      ua:      [1.0e-11, 1.0e-8, log, m/V]
+      ud:      [0.0, 5.0e-3, lin, "-"]
+      eu:      [0.5, 3.0, lin, "-"]
+      vsat:    [4.0e4, 2.0e5, log, m/s]
+      rdswmin: [1.0, 500.0, log, ohm*um]
+      rdsw:    [1.0, 500.0, log, ohm*um]
+      pclm:    [0.0, 5.0, lin, "-"]
+
+  # ---------------------------------------------------------------- stage 4
+  # Capacitance. The DC fit never saw a single capacitance, so these have to
+  # be extracted separately or they are simply defaults pretending to be a
+  # measurement. The parasitic values here are already MEASURED (the ~29.9 aF
+  # floor, n and p agreeing to 0.24%), so the ranges are narrow on purpose:
+  # this stage refines a measurement, it does not invent one.
+  - name: s4_capacitance
+    sweeps: [nsfet_n_CV_0.05, nsfet_n_CV_0.60]
+    budget: {parallel: 8, max_evals: 100, init_n: 20}
+    parameters:
+      cgsp: [1.0e-17, 1.8e-17, lin, F/m]
+      cgdp: [1.0e-17, 1.8e-17, lin, F/m]
+      cgbo: [1.0e-10, 2.2e-10, lin, F/m]
+      cfs:  [0.0, 5.0e-11, lin, F/m]
+      cfd:  [0.0, 5.0e-11, lin, F/m]
+
+  # ---------------------------------------------------------------- stage 5
+  # Global polish. Every free parameter at once, but starting from a point
+  # that is already physically meaningful and inside a trust region that
+  # cannot wander far from it. This removes the residual interaction the
+  # staged fit leaves behind WITHOUT re-opening the degeneracy that staging
+  # was there to prevent.
+  - name: s5_polish
+    sweeps: [nsfet_n_IdVg_0.05, nsfet_n_IdVg_0.60,
+             nsfet_n_IdVd_0.60, nsfet_n_IdVd_0.45,
+             nsfet_n_CV_0.05, nsfet_n_CV_0.60]
+    sweep_weights: {nsfet_n_CV_0.05: 0.5, nsfet_n_CV_0.60: 0.5}
+    budget: {parallel: 8, max_evals: 200, init_n: 40}
+    parameters:
+      phig:    [4.44, 4.56, lin, eV]
+      dvt0:    [0.0, 5.0, lin, "-"]
+      eta0:    [0.0, 0.5, lin, "-"]
+      u0:      [0.005, 0.08, log, m2/Vs]
+      ua:      [1.0e-11, 1.0e-8, log, m/V]
+      vsat:    [4.0e4, 2.0e5, log, m/s]
+      rdswmin: [1.0, 500.0, log, ohm*um]

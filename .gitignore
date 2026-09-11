@@ -29,8 +29,13 @@ env/
 # --- Campaign run artifacts (personal outputs, not engine code) ---
 results/
 runs/
+runs_fit/
 *.db
 *.sqlite
+
+# --- Reference curves ARE tracked: targets/*.csv are your own measured data,
+#     not vendor material, and an extraction spec is meaningless without them.
+#     Nothing to exclude here; this note exists so nobody adds targets/ above.
 
 # --- Editor / OS clutter ---
 .vscode/

@@ -7,9 +7,13 @@ for improvement.
 
 - **Report a bug.** Open an issue describing what you ran, what you expected,
   and what happened. Include the problem YAML if you can share it.
-- **Connect a new simulator.** Adapters for simulators other than the one this
-  was developed against would make the engine far more useful. See
-  `docs/CONNECTING_A_SIMULATOR.md`.
+- **Connect a new simulator.** Adapters for simulators other than the ones this
+  was developed against would make the engine far more useful -- both TCAD
+  simulators for the design path and circuit simulators for the extraction
+  path. See `docs/CONNECTING_A_SIMULATOR.md`.
+- **Add a compact model.** The card generator currently targets BSIM-CMG.
+  Another standard model is a new template in `tcadopt/l2_decks/cardgen.py` and
+  nothing else. See `docs/PARAMETER_EXTRACTION.md`.
 - **Extend the physics knowledge base.** New invariants and lever maps for
   device families not yet covered. See `docs/PHYSICS_KNOWLEDGE.md`.
 - **Improve the optimizer.** Better acquisition functions, better surrogate
@@ -27,6 +31,10 @@ for improvement.
 - **Keep physics claims honest.** If you add an invariant or a lever map,
   be able to justify it from device physics. An incorrect invariant will
   silently discard valid results.
+- **Report a measurement, not an impression.** If you claim a change improves
+  something, say what you measured and on what. Every performance claim in this
+  repository names the configuration it was measured on, and a claim that
+  cannot be reproduced from what is written down is worse than no claim.
 
 ## Submitting a change
 

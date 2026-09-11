@@ -1,6 +1,8 @@
 # The Complete Workflow: From Problem to Optimized Device
 
-This is the main guide. It walks through exactly what you do to optimize a real device, start to finish, with your own TCAD simulator. This is what TCADOpt is for: you provide a problem description and a simulator deck, run one command, and the engine runs many simulations in parallel, learns from them, and returns an optimized design with no further input from you.
+This is the main guide **for design optimization**. It walks through exactly what you do to optimize a real device, start to finish, with your own TCAD simulator. You provide a problem description and a simulator deck, run one command, and the engine runs many simulations in parallel, learns from them, and returns an optimized design with no further input from you.
+
+> **Looking for the other job?** If you already have a device and want a compact model of it, that is parameter extraction, and its equivalent of this guide is **[PARAMETER_EXTRACTION.md](PARAMETER_EXTRACTION.md)**. The two share an engine but not a workflow, so read that one instead of adapting this one.
 
 If you have not yet confirmed your install works, do that first with `python check_setup.py` (see GETTING_STARTED.md).
 
@@ -306,4 +308,24 @@ read the champion + evidence     ->  design values are your optimized device
 run a few seeds to confirm       ->  agreement = global-optimum confidence
 ```
 
-That is the engine. You describe the device and the goal; it does the simulation campaign and hands you the optimized design.
+That is the design-optimization path. You describe the device and the goal; the engine does the simulation campaign and hands you the optimized design.
+
+---
+
+## What comes after an optimized design
+
+An optimized design is a set of dimensions and dopings. To put that device into
+a circuit simulation you need a compact model of it, and that is the other half
+of what this engine does:
+
+```
+optimized design         ->  simulate it and export the I-V and C-V curves
+write problems/<n>_fit.yaml  ->  target curves, stage schedule
+run one command          ->  python -m tcadopt.l8_orch.run_fit problems/<n>_fit.yaml
+                             engine fits stage by stage, freezing as it goes
+read the extracted card  ->  results/frozen_<n>_fit.json
+check identifiability    ->  which of those numbers are real measurements
+```
+
+Full guide: **[PARAMETER_EXTRACTION.md](PARAMETER_EXTRACTION.md)**. First run,
+one command at a time: **[EXTRACTION_TUTORIAL.md](EXTRACTION_TUTORIAL.md)**.

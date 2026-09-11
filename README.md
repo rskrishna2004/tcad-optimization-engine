@@ -1,12 +1,22 @@
 # TCADOpt
 
-**A physics-aware Bayesian optimization engine for semiconductor device simulation.**
+**A physics-aware Bayesian optimization engine for semiconductor device simulation, and a compact-model parameter extraction engine.**
 
-TCADOpt drives a TCAD device simulator to automatically discover device designs with the best possible electrical characteristics. You describe the device and the targets in a small YAML file, point the engine at your simulator, and run one command. It then runs an unattended campaign of **many simulations in parallel**, learning from every result to steer the search, guarding against unphysical results, and returning an optimized champion with confidence evidence. It is vendor-independent: it drives whatever TCAD tools you configure.
+TCADOpt does two things with one optimizer core.
+
+**Design optimization.** It drives a TCAD device simulator to automatically discover device designs with the best possible electrical characteristics. You describe the device and the targets in a small YAML file, point the engine at your simulator, and run one command. It then runs an unattended campaign of **many simulations in parallel**, learning from every result to steer the search, guarding against unphysical results, and returning an optimized champion with confidence evidence.
+
+**Parameter extraction** *(new in v1.1.0)*. It fits a compact model's parameters to reference curves from a device you have already simulated, so the model reproduces that device inside a circuit simulator. It fits the **whole curve** rather than a handful of figures of merit, extracts in stages with earlier results frozen so each parameter keeps its physical meaning, and then measures whether the data could determine those parameters at all.
+
+Both paths are vendor-independent: the engine drives whatever tools you configure.
 
 ---
 
-> **New here?** Read **[docs/WORKFLOW.md](docs/WORKFLOW.md)** — it is the complete, step-by-step guide from a problem file to an optimized device. Everything else supports it. A full documentation map is in **[docs/README.md](docs/README.md)**.
+> **New here?** Pick the guide for what you are doing:
+> - optimizing a device's design → **[docs/WORKFLOW.md](docs/WORKFLOW.md)**
+> - extracting compact-model parameters → **[docs/PARAMETER_EXTRACTION.md](docs/PARAMETER_EXTRACTION.md)**
+>
+> A full documentation map is in **[docs/README.md](docs/README.md)**.
 
 
 It was built and hardened during a competitive TCAD device optimization challenge, and it encodes a large amount of hard-won practical knowledge about how to make an automated device-optimization loop actually work.
@@ -17,6 +27,8 @@ It was built and hardened during a competitive TCAD device optimization challeng
 
 Optimizing a modern transistor means choosing many coupled parameters (doping levels, junction placements, geometry) so that several competing metrics (on-current, off-current leakage, transconductance, subthreshold behavior) all land in a good place at once. Doing this by hand is slow, and a brute-force grid search is impossible because the space is far too large and every point costs a full physics simulation that can take minutes.
 
+Extracting compact-model parameters is the same shape of problem wearing different clothes. There the design is fixed and the unknowns are the model's parameters; the expensive evaluation is a circuit simulation instead of a device simulation; and "better" means the model's curve lies on top of the measured curve rather than the device being fast. The search machinery is identical, which is why one engine does both.
+
 TCADOpt solves this the way a state-of-the-art optimizer should:
 
 - It builds a **surrogate model** of the design space from the simulations it has already run, so it can predict where good designs are likely to be before spending a simulation there.
@@ -24,6 +36,7 @@ TCADOpt solves this the way a state-of-the-art optimizer should:
 - It seeds the search using **device physics knowledge**, so it starts in promising regions instead of at random.
 - It runs a **physics guard** on every result, so a simulation that violates a physical law (for example, a subthreshold slope steeper than the thermodynamic limit) is quarantined and never poisons the model.
 - It **defends every champion** with reproducibility, robustness, and consistency checks, so a reported "best design" comes with evidence, not just a number.
+- For extraction it **measures identifiability**, so a reported parameter value comes with an answer to "could this data have determined that number at all?" — a question the fit error cannot answer, because a degenerate fit fits perfectly.
 
 ---
 
@@ -35,6 +48,9 @@ TCADOpt solves this the way a state-of-the-art optimizer should:
 - **Device-agnostic.** Planar MOSFET, FinFET, gate-all-around nanowire, and more. The engine does not care what the device is; it optimizes whatever simulation deck you connect.
 - **Physics knowledge base.** A human-readable file of device-physics rules that the engine uses both to seed the search and to audit results.
 - **Champion defense dossier.** A structured, evidence-backed report on why the winning design deserves trust.
+- **Whole-curve fitting.** For extraction, the objective is the residual over every bias point, split into a sub-threshold error in decades and an on-state error as a fraction, so both ends of an eight-decade current range are actually being fitted.
+- **Staged extraction with freezing.** Parameters are extracted in the bias region where each dominates, with everything already extracted held fixed, so the result is an extraction rather than a curve fit.
+- **Identifiability measurement.** Which extracted numbers are measurements, which pairs are indistinguishable, and how many independent directions the data really contains.
 
 ---
 
@@ -54,6 +70,8 @@ TCADOpt is organized as a layered pipeline. Each layer has one clear job, and re
 | Orchestration | Run a full campaign or a Pareto front from start to finish |
 | Report | Produce the champion defense dossier |
 
+The extraction path reuses the same layers: `l1_spec` builds the parameter space and the curve-residual scorer, `l2_decks` renders the model card and the circuit-simulator decks, `l3_exec` runs them and reads the listings, `l5_opt` proposes the next candidates, `l6_verify` measures identifiability, `l7_memory` stores every attempt, and `l8_orch` runs the staged campaign.
+
 A full explanation of every layer is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
@@ -62,7 +80,9 @@ A full explanation of every layer is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTU
 
 TCADOpt is the **optimization brain**, not the simulator. To optimize real devices you connect it to a TCAD simulator of your choice. The engine is **simulator-agnostic**: it invokes two configurable commands, a structure/mesh builder and an electrical device solver, which you point at whatever tools you use. **No simulator files, vendor decks, or vendor documentation are included in this repository**, both for licensing reasons and to keep the engine independent of any one vendor. Instead, [`docs/CONNECTING_A_SIMULATOR.md`](docs/CONNECTING_A_SIMULATOR.md) explains exactly how to write the small adapter that lets the engine drive your simulator.
 
-**You can try the engine with no simulator at all.** The [`examples/synthetic_demo`](examples/synthetic_demo) folder runs the full optimizer against a fast synthetic math function that stands in for a simulator, so you can watch the whole pipeline work on any computer in seconds.
+For extraction you connect a **circuit simulator** instead (HSPICE is what the reference implementation drives, via `TCADOPT_SPICE_TOOL`). Reading an HSPICE listing is built in; other simulators need a small parser, described in [`docs/PARAMETER_EXTRACTION.md`](docs/PARAMETER_EXTRACTION.md).
+
+**You can try both paths with no simulator at all.** [`examples/synthetic_demo`](examples/synthetic_demo) runs the full optimizer against a fast synthetic math function that stands in for a device simulator, and [`examples/extraction_demo`](examples/extraction_demo) runs the full staged extraction against a stand-in transistor with a known answer, so you can watch either pipeline work on any computer in seconds.
 
 ---
 
@@ -78,6 +98,8 @@ python check_setup.py            # confirms Python + dependencies are ready
 
 Then the real workflow, on your own TCAD simulator:
 
+Then the real workflow. **To optimize a device's design:**
+
 ```bash
 # 2. tell the engine which TCAD tools to run (once)
 export TCADOPT_STRUCTURE_TOOL="your_structure_tool"   # builds structure + mesh
@@ -87,17 +109,28 @@ export TCADOPT_DEVICE_TOOL="your_device_tool"         # runs the electrical sim
 python -m tcadopt.l8_orch.run_campaign problems/your_problem.yaml
 ```
 
-The engine runs the whole simulation campaign on its own and prints an optimized champion design. **Read [docs/WORKFLOW.md](docs/WORKFLOW.md) first** — it walks through every step: connecting your simulator, writing the problem file, running, monitoring, and collecting results.
+**To extract compact-model parameters:**
+
+```bash
+# 2. tell the engine which circuit simulator to run (once)
+export TCADOPT_SPICE_TOOL="hspice"
+
+# 3. extract: engine runs the stages in order, freezing as it goes
+python -m tcadopt.l8_orch.run_fit problems/your_fit.yaml
+```
+
+The engine runs the whole campaign on its own and prints an optimized champion design, or an extracted parameter set with its per-stage errors. **Read [docs/WORKFLOW.md](docs/WORKFLOW.md)** for design optimization and **[docs/PARAMETER_EXTRACTION.md](docs/PARAMETER_EXTRACTION.md)** for extraction — each walks through every step: connecting your simulator, writing the problem file, running, monitoring, and collecting results.
 
 ### Verifying your install without a simulator
 
 If you do not have a TCAD simulator on this machine and just want to confirm the optimizer itself installed correctly, there is a tiny self-check that runs the optimization loop against a stand-in math function (it does **not** simulate any device; it only proves the engine imports and runs):
 
 ```bash
-python examples/synthetic_demo/run_demo.py
+python examples/synthetic_demo/run_demo.py       # the design-optimization path
+python examples/extraction_demo/run_demo.py      # the extraction path
 ```
 
-This is an install sanity check only. The engine's actual purpose is driving your TCAD simulator, described in [docs/WORKFLOW.md](docs/WORKFLOW.md).
+These are install sanity checks only. The engine's actual purpose is driving your own simulators, described in [docs/WORKFLOW.md](docs/WORKFLOW.md) and [docs/PARAMETER_EXTRACTION.md](docs/PARAMETER_EXTRACTION.md).
 
 ---
 
@@ -105,12 +138,14 @@ This is an install sanity check only. The engine's actual purpose is driving you
 
 Read them roughly in this order:
 
-- **[Workflow](docs/WORKFLOW.md)** — the complete start-to-finish guide: problem file in, one command, parallel simulations, optimized device out. **Start here.**
-- [Getting started](docs/GETTING_STARTED.md) — install and verify your environment
-- [Connecting a simulator](docs/CONNECTING_A_SIMULATOR.md) — point the engine at your TCAD tools (do this once)
-- [Writing a problem file](docs/WRITING_A_PROBLEM.md) — the YAML format, every field explained
+- [Getting started](docs/GETTING_STARTED.md) — install and verify your environment. **Start here** whichever path you are on.
+- **[Workflow](docs/WORKFLOW.md)** — design optimization, start to finish: problem file in, one command, parallel simulations, optimized device out.
+- **[Parameter extraction](docs/PARAMETER_EXTRACTION.md)** — extraction, start to finish: reference curves in, staged fit, extracted model card out.
+- [Extraction tutorial](docs/EXTRACTION_TUTORIAL.md) — your first extraction, one command at a time, with what every printed line means
+- [Connecting a simulator](docs/CONNECTING_A_SIMULATOR.md) — point the engine at your tools, TCAD or circuit (do this once)
+- [Writing a problem file](docs/WRITING_A_PROBLEM.md) — the YAML format for both kinds of problem, every field explained
 - [Tuning](docs/TUNING.md) — how to set parallelism and budget for your machine and your problem
-- [Architecture](docs/ARCHITECTURE.md) — how every layer of the engine works
+- [Architecture](docs/ARCHITECTURE.md) — how every layer of the engine works, and how one core serves two jobs
 - [Optimizer backends](docs/OPTIMIZER_BACKENDS.md) — the default backend vs the optional BoTorch backend, and when to use which
 - [The physics knowledge base](docs/PHYSICS_KNOWLEDGE.md) — how physics seeding and the guard work
 - [Case study](docs/CASE_STUDY.md) — a real nanowire optimization, including the lessons learned
@@ -138,7 +173,7 @@ for what changes and the measured comparison.
 
 ## Project status
 
-This is **version 1.0.1**. The engine is functional and has been used on real device optimization campaigns. It is under active development and new capabilities will be added over time. See [`CHANGELOG.md`](CHANGELOG.md).
+This is **version 1.1.0**. The engine is functional and has been used on real device optimization campaigns; the extraction path is new in this release and its loop is verified end to end against a stand-in simulator with a known answer. It is under active development and new capabilities will be added over time. See [`CHANGELOG.md`](CHANGELOG.md).
 
 Feedback, issues, and contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
@@ -157,6 +192,6 @@ Third-party components used by the optional optimizer backend are credited in [`
 If this engine helps your work, a citation or a link back is appreciated:
 
 ```
-R. Sri Krishna, "TCADOpt: A physics-aware Bayesian optimization engine for
-semiconductor device simulation," 2026. https://github.com/rskrishna2004/tcad-optimization-engine
+R. Sri Krishna, "TCADOpt: A physics-aware Bayesian optimization and compact-model
+extraction engine for semiconductor device simulation," 2026. https://github.com/rskrishna2004/tcad-optimization-engine
 ```

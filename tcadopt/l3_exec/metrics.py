@@ -30,11 +30,27 @@ def constant_current_vt(vg, idd, icrit):
     return float(np.interp(icrit, idd, vg))
 
 
+def _strict_x(x, y):
+    """Keep strictly-increasing x. BUGFIX (audit D3): a repeated bias point --
+    which every DoZero/ramp deck produces at the sweep ends -- makes
+    np.gradient divide by zero, so gm comes back nan and SS comes back inf,
+    and the scorer then rejects a perfectly good simulation with -1e9. The
+    l1_spec twin of this module already had this guard; the module the
+    runtime actually imports (this one, via execute.py) did not."""
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    o = np.argsort(x)
+    x, y = x[o], y[o]
+    keep = np.concatenate(([True], np.diff(x) > 1e-12))
+    return x[keep], y[keep]
+
+
 def subthreshold_swing(vg, idd):
     """Min SS (mV/dec) = 1000 / max d(log10|Id|)/d|Vg| in the rising region."""
     vg, idd = _prep(vg, idd)
     with np.errstate(divide="ignore"):
         logi = np.log10(np.clip(idd, 1e-30, None))
+    vg, logi = _strict_x(vg, logi)
     slope = np.gradient(logi, vg)
     s = np.max(slope)
     return float(1000.0 / s) if s > 0 else float("inf")
@@ -46,6 +62,7 @@ def foms_from_idvg(vg, idd, vdd, voff=0.0, vt_icrit=1.0e-7, id_targets=()):
     vg, idd = _prep(vg, idd)
     ion = float(np.interp(vdd, vg, idd))
     ioff = float(np.interp(voff, vg, idd))
+    vg, idd = _strict_x(vg, idd)          # BUGFIX (audit D3)
     gm = np.gradient(idd, vg)
     gm_pk = float(np.max(gm))
     vg_pk = float(vg[int(np.argmax(gm))])
