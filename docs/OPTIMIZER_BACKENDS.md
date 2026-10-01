@@ -1,8 +1,8 @@
 # Optimizer backends
 
 The optimizer layer (`l5_opt`) has a swappable backend. Everything else in the
-engine — the problem file, the physics guard, knowledge seeding, the experiment
-database, certification, the defense dossier — is identical whichever backend
+engine - the problem file, the physics guard, knowledge seeding, the experiment
+database, certification, the defense dossier - is identical whichever backend
 runs. Only the way the next batch of candidates is chosen changes.
 
 Both backends serve **both** jobs. A design campaign and an extraction stage
@@ -15,7 +15,7 @@ There are two.
 
 | | `scipy_gp_v4_tr` (default) | `botorch_qlogei_tr` (optional) |
 |---|---|---|
-| Needs | numpy, scipy | Python ≥3.11, torch, botorch |
+| Needs | numpy, scipy | Python >=3.11, torch, botorch |
 | Runs on Python 3.6 | yes | no |
 | Surrogate | ARD-RBF GP, analytic-gradient MLL | SingleTaskGP + GPyTorch priors |
 | Acquisition | analytic Expected Improvement | qLogEI / qLogNEI |
@@ -25,9 +25,9 @@ There are two.
 | Trust region | TCADOpt schedule | the same TCADOpt schedule |
 
 The trust region is deliberately shared. Its constants (`fail_tol=1`,
-shrink ×0.5, `MEANINGFUL_EPS=5e-3`, under-explored restart centre) were tuned
+shrink x0.5, `MEANINGFUL_EPS=5e-3`, under-explored restart centre) were tuned
 against this project's own audit gauntlet, and that tuning is TCAD campaign
-knowledge — not something a library default should overwrite.
+knowledge - not something a library default should overwrite.
 
 ## Which one runs
 
@@ -76,7 +76,7 @@ candidates correctly in exactly this regime.
 
 This is also, in hindsight, what the `explore_frac` slice added in `gp.py`
 v4.2 was compensating for. That slice was added because "pure EI+TR converges
-to a broad decoy and never discovers a superior narrow basin" — which is the
+to a broad decoy and never discovers a superior narrow basin" - which is the
 observable symptom of an acquisition that has gone numerically flat. The slice
 treats the symptom; the log-space formulation removes the cause. Both are kept,
 because the exploration slice is still useful insurance against a confidently
@@ -89,7 +89,7 @@ Improvements to Expected Improvement for Bayesian Optimization*, NeurIPS 36,
 ## Why gradient-based acquisition search matters here
 
 The default backend scores 6000 random candidates and takes the best. In 17
-dimensions, 6000 points is `6000^(1/17) ≈ 1.67` samples per axis — under two
+dimensions, 6000 points is `6000^(1/17) ~ 1.67` samples per axis - under two
 per dimension. The pool is not resolving the space; it is sampling it thinly
 and hoping. The BoTorch backend instead starts from several promising points
 and follows the acquisition gradient to a local maximum, which does not degrade
@@ -98,7 +98,7 @@ as dimension grows.
 ## Measured difference
 
 17-D TCAD-like landscape (broad bowl + ridge coupling + a local trap), budget
-36 initial + 6 rounds × 10 = 96 evaluations, 3 seeds:
+36 initial + 6 rounds x 10 = 96 evaluations, 3 seeds:
 
 | Backend | best per seed | mean | gap to optimum |
 |---|---|---|---|
@@ -114,7 +114,7 @@ optimizer is not the bottleneck; the simulator is. Spending more compute to
 choose better designs is close to free.
 
 Both benchmarks are synthetic. They are a sanity check on the optimizer, not a
-device result — treat them as evidence the backend is worth trying on a real
+device result - treat them as evidence the backend is worth trying on a real
 campaign, not as a claimed device improvement.
 
 ## Which one for an extraction
@@ -129,7 +129,7 @@ and validated against.
 
 The case for BoTorch on an extraction is the late-stage polish, where the trust
 region has shrunk around a good point and the differences between candidates
-are small — exactly the regime where analytic expected improvement underflows.
+are small - exactly the regime where analytic expected improvement underflows.
 If you have Python 3.11 and the dependencies, letting `auto` pick it costs
 nothing.
 
@@ -139,8 +139,8 @@ Run the default backend if your TCAD workstation is locked to an older Python,
 which is common on solver hosts. Nothing is lost: `scipy_gp_v4_tr` is the
 backend every certified campaign in this project used.
 
-If the workstation has Python ≥3.11, install the optional dependencies and let
+If the workstation has Python >=3.11, install the optional dependencies and let
 `auto` pick BoTorch. A safe way to adopt it is to run one problem you already
-have a certified champion for, on both backends, same seed, and compare —
+have a certified champion for, on both backends, same seed, and compare -
 the engine keeps every trial in the experiment database, so the comparison is
 already recorded.

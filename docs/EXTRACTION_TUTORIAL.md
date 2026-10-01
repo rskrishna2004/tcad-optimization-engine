@@ -44,7 +44,7 @@ Simulator tools (optional -- only needed for real runs)
 python examples/extraction_demo/run_demo.py
 ```
 
-This runs the complete staged extraction against a stand-in transistor — a fast
+This runs the complete staged extraction against a stand-in transistor - a fast
 analytic function standing in for a circuit simulator. It is not a compact
 model and no netlist is run, but every other part of the machinery is the real
 one.
@@ -66,20 +66,20 @@ STAGE s1_electrostatics  free=4  frozen=0  sweeps=1  backend=scipy_gp_v4_tr
 
 Line by line:
 
-- **`free=4 frozen=0`** — this stage may move four parameters and inherits none.
+- **`free=4 frozen=0`** - this stage may move four parameters and inherits none.
   Stage 2 will say `frozen=4`.
-- **`sweeps=1`** — this stage is scored on one target curve. Later stages use
+- **`sweeps=1`** - this stage is scored on one target curve. Later stages use
   more, and stage 2 uses two *because* it has to: the effect it is fitting is
   defined as the difference between two drain biases.
-- **`error` falling round on round** — the surrogate is learning. Flattening is
+- **`error` falling round on round** - the surrogate is learning. Flattening is
   expected and is how the stage decides it is done.
-- **the two error numbers** — this is the part worth understanding. Drain
+- **the two error numbers** - this is the part worth understanding. Drain
   current spans about eight decades, so one error measure cannot serve both
   ends. Sub-threshold error is quoted in **decades** (0.0706 decades is 17.6 %
   in current); on-state error is quoted as a **fraction** (0.0051 is 0.51 %).
   When a fit stalls, these two say which half stalled and therefore which
   parameters to release.
-- **`phig ... err 0.00 %`** — the stand-in has a hidden true value the optimizer
+- **`phig ... err 0.00 %`** - the stand-in has a hidden true value the optimizer
   was never given, and stage 1 recovered it. That is the check that the loop
   works, not just that it runs.
 
@@ -116,7 +116,7 @@ the two lost directions.
 
 So the optimizer did not fail. It answered the question the data can answer, and
 this report says which question that was. **A degenerate fit fits perfectly**,
-so the fit error can never reveal this — which is precisely why the check is a
+so the fit error can never reveal this - which is precisely why the check is a
 separate measurement.
 
 ---
@@ -169,7 +169,7 @@ Two CSV files, one row per bias point, under `targets/`.
 | `usable` | optional. Anything other than `yes`/`true`/`1`/blank excludes the row. |
 
 The `usable` column matters more than it looks. Real capacitance data has
-regions where the measurement itself is not trustworthy — a matrix row that
+regions where the measurement itself is not trustworthy - a matrix row that
 does not sum to zero, a point at the simulator's noise floor. Fitting to a
 point the reference says is bad is worse than having no point, because the
 optimizer will faithfully bend the model to reproduce a measurement error. Mark
@@ -244,8 +244,8 @@ Two rules that save the most trouble:
 python -m tcadopt.l8_orch.run_fit problems/your_fit.yaml --stage 1
 ```
 
-Do this before running the whole schedule. Stage 1 is typically the cheapest —
-few parameters, one sweep — and it exercises the model card, the deck
+Do this before running the whole schedule. Stage 1 is typically the cheapest -
+few parameters, one sweep - and it exercises the model card, the deck
 generation, the simulator call, the listing parser and your target file all at
 once. If any of those is misconfigured you find out in minutes.
 
@@ -261,7 +261,7 @@ The three most common causes, in order:
 
 - **The simulator is not on the path.** `check_setup.py` says so.
 - **The model card is rejected.** The listing says which parameter. The most
-  common by far is a `VERSION` that does not support your geometry — but the
+  common by far is a `VERSION` that does not support your geometry - but the
   generated cards always write `VERSION`, so this usually means the value in
   `structures:` is wrong for your model.
 - **The parser found no table.** Your simulator's listing format differs.
@@ -337,7 +337,7 @@ EOF
 ```
 
 This costs two simulator runs per parameter, which for eight parameters is
-sixteen — minutes, not hours.
+sixteen - minutes, not hours.
 
 **How to act on what it says:**
 
@@ -345,7 +345,7 @@ sixteen — minutes, not hours.
 |---|---|---|
 | `effective rank` equals the number of free parameters, no degenerate pairs | Every parameter is independently determined | Nothing. This is the good outcome. |
 | `NOT MEASURED by this data: X` | The curve does not respond to `X` at all | Fix `X` at a physically sensible value and remove it from the stage. Its fitted value is a starting guess wearing a result's clothes. |
-| `A ~ B  r = +1.0000  DEGENERATE` | Only the combination of `A` and `B` is determined | Fix one of them from physics or from a datasheet, or add a measurement that separates them — another temperature, another geometry, another bias. More optimizer budget will not help. |
+| `A ~ B  r = +1.0000  DEGENERATE` | Only the combination of `A` and `B` is determined | Fix one of them from physics or from a datasheet, or add a measurement that separates them - another temperature, another geometry, another bias. More optimizer budget will not help. |
 | A large `condition number` with no single bad pair | The set is collectively over-parameterised | Reduce the stage's free parameters, or split it into two stages against different bias regions. |
 
 The important thing about all four rows: **none of them is visible in the fit
@@ -367,7 +367,7 @@ frozen = json.load(open('results/frozen_your_fit.json'))
 print(render_card('nsfet_n', frozen, polarity='nmos'))" > nsfet_n.lib
 ```
 
-Every fit attempt — not just the winner — is in `results/extraction.db`, with
+Every fit attempt - not just the winner - is in `results/extraction.db`, with
 its parameters, its per-sweep errors and its provenance. That database is what
 makes the extraction auditable rather than merely finished.
 
@@ -381,7 +381,7 @@ You have an extraction you can defend when all four of these are true:
    stated in advance is acceptable for your application. Say what that level is
    *before* you fit, not after.
 2. **The identifiability report is clean**, or every degeneracy it reports has
-   been resolved by fixing a parameter or adding a measurement — and you can
+   been resolved by fixing a parameter or adding a measurement - and you can
    say which.
 3. **You can name, for every parameter, which measurement determined it** and
    what was held fixed while it was found. Staging gives you this for free; it
@@ -393,7 +393,7 @@ You have an extraction you can defend when all four of these are true:
 
 ## Where to go next
 
-- [PARAMETER_EXTRACTION.md](PARAMETER_EXTRACTION.md) — why each piece is built the way it is
-- [WRITING_A_PROBLEM.md](WRITING_A_PROBLEM.md) — Part 2, every field of a fit spec
-- [TUNING.md](TUNING.md) — "Tuning an extraction", for budgets and parallelism
-- [ARCHITECTURE.md](ARCHITECTURE.md) — how one optimizer core serves both jobs
+- [PARAMETER_EXTRACTION.md](PARAMETER_EXTRACTION.md) - why each piece is built the way it is
+- [WRITING_A_PROBLEM.md](WRITING_A_PROBLEM.md) - Part 2, every field of a fit spec
+- [TUNING.md](TUNING.md) - "Tuning an extraction", for budgets and parallelism
+- [ARCHITECTURE.md](ARCHITECTURE.md) - how one optimizer core serves both jobs

@@ -13,5 +13,5 @@ The surrogate model, the trust region, the physics guard, the experiment
 database and the campaign loop are shared by both. See docs/ARCHITECTURE.md.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.1.19"
 __all__ = ["__version__"]

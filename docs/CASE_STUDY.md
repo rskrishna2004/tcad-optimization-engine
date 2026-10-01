@@ -71,8 +71,8 @@ A long campaign ran on that structure. When the spacer was reverted to silicon n
 
 ## A postscript from the extraction work
 
-The extraction path added in v1.1.0 was built against a different device — a
-4-sheet gate-all-around nanosheet FET — and it produced two lessons that belong
+The extraction path added in v1.1.0 was built against a different device - a
+4-sheet gate-all-around nanosheet FET - and it produced two lessons that belong
 next to the four above, because they are the same lesson in a new costume.
 
 **Lesson five: check what the tool actually ran, not what you told it to run.**
@@ -89,7 +89,7 @@ failure tells you.
 **Lesson six: a perfect fit is not evidence of a correct extraction.** If two
 parameters change the simulated curve in the same way, infinitely many pairs of
 values fit the data equally well, and the pair a tool reports is one arbitrary
-point out of an infinite set. This cannot be seen in the fit error — a
+point out of an infinite set. This cannot be seen in the fit error - a
 degenerate fit fits *perfectly*. It has to be measured separately, which is
 what `l6_verify/identifiability.py` now does. The same instinct as lesson four:
 write down what you do not know, with the physics, rather than letting a

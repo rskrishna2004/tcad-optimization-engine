@@ -107,7 +107,7 @@ Three things are worth watching:
 
 - **The error is two numbers, not one.** Sub-threshold error is reported in *decades* and on-state error as a *percentage*, because drain current spans about eight decades and one measure cannot serve both ends. When a fit stalls, the two numbers say which half stalled.
 - **`phig` comes back essentially exact.** That is the gate work function, and it is what stage 1 exists to determine. The stand-in model has a hidden true value the optimizer was never given.
-- **Some parameters come back badly wrong, and that is the correct result.** The stand-in was built so that three of its parameters enter through a single sum and two more through a single product. Their individual values are simply not determined by the data. The identifiability report at the end finds exactly those pairs and says so — which the fit error can never do, because a degenerate fit fits perfectly.
+- **Some parameters come back badly wrong, and that is the correct result.** The stand-in was built so that three of its parameters enter through a single sum and two more through a single product. Their individual values are simply not determined by the data. The identifiability report at the end finds exactly those pairs and says so - which the fit error can never do, because a degenerate fit fits perfectly.
 
 ## 6. Run multiple seeds for global confidence
 

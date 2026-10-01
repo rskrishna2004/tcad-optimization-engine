@@ -8,7 +8,7 @@ All of these live in the `budget:` section of your problem YAML, and every one c
 
 ## The two settings that matter most
 
-### `parallel` — how many simulations run at the same time
+### `parallel` - how many simulations run at the same time
 
 ```yaml
 budget:
@@ -34,7 +34,7 @@ The engine launches this many simulations simultaneously, each in its own workin
 
 Start conservative. Run a small campaign, watch your machine's CPU and memory, and raise `parallel` only if there is clear headroom.
 
-### `max_evals` — how many simulations in total
+### `max_evals` - how many simulations in total
 
 ```yaml
 budget:
@@ -57,19 +57,19 @@ If a full search would need more simulations than you have time for, it is bette
 
 ## The rest of the adjustable settings
 
-### `round_n` — simulations per learning round
+### `round_n` - simulations per learning round
 
 By default this equals `parallel`, so each round runs exactly one full parallel batch, which is the efficient choice. You rarely need to set it. If you do set it, keep it a multiple of `parallel` so batches stay full.
 
-### `init_n` — the size of the initial exploration
+### `init_n` - the size of the initial exploration
 
 Before the engine starts learning, it samples the space broadly. By default this is sized automatically from your parallelism. A larger initial sample explores more before committing, which helps on spaces you suspect have many separate good regions, at the cost of more up-front simulations. If you do not set it, the automatic value is sensible.
 
-### `max_restarts` — how persistently to escape local optima
+### `max_restarts` - how persistently to escape local optima
 
 When the search plateaus, the engine restarts from an unexplored region rather than stopping. This setting caps how many times it will do that before concluding it is done. The default is a good balance. Raise it if you specifically suspect a deceptive space with many local optima and you have simulation budget to spare.
 
-### Timeouts — how long to allow each simulation
+### Timeouts - how long to allow each simulation
 
 Set with environment variables, not in the YAML:
 
@@ -102,7 +102,7 @@ arithmetic changes in three ways.
 A design evaluation is one structure build plus one device solve. An extraction
 evaluation is **one circuit-simulator run per target sweep**. A stage scored on
 four sweeps costs four runs per candidate. Circuit simulations are seconds
-rather than minutes, so this is still far cheaper than a design campaign — but
+rather than minutes, so this is still far cheaper than a design campaign - but
 when you set `parallel`, remember you are launching `parallel x n_sweeps`
 processes, and count licences the same way.
 
@@ -116,7 +116,7 @@ the total across the whole schedule:
 - 8 to 12 free parameters: 250 to 400
 
 A five-stage schedule with four to eight parameters each therefore costs about
-700 to 900 evaluations in total — but spent as five separate, well-posed
+700 to 900 evaluations in total - but spent as five separate, well-posed
 searches rather than one badly-posed one. That is the whole reason for staging,
 and it is cheaper as well as more meaningful.
 

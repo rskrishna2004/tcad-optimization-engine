@@ -11,7 +11,7 @@ This document explains the adapter you write in each case. This is the only inte
 
 ---
 
-## Part 1 — Connecting a TCAD simulator (design optimization)
+## Part 1 - Connecting a TCAD simulator (design optimization)
 
 ---
 
@@ -140,7 +140,7 @@ This is the single most common source of confusion, so it deserves emphasis. The
 
 ---
 
-## Part 2 — Connecting a circuit simulator (parameter extraction)
+## Part 2 - Connecting a circuit simulator (parameter extraction)
 
 This half is deliberately short. A compact model card is a standardised
 `.model` statement and a netlist is standardised SPICE, so unlike a TCAD
@@ -180,10 +180,10 @@ python check_setup.py
 
 Per candidate, in its own run directory:
 
-- **one model card per device polarity** — a `.model ... level = 72` statement
+- **one model card per device polarity** - a `.model ... level = 72` statement
   with `VERSION` first, then the fixed structural parameters, then the
   parameters this stage is fitting;
-- **one deck per target sweep** — `.include` the card, set the bias sources,
+- **one deck per target sweep** - `.include` the card, set the bias sources,
   place the element, `.dc` or `.ac` sweep it at exactly the reference bias
   points, and `.print` the result.
 
@@ -195,16 +195,16 @@ quietly becomes an interpolation artefact.
 
 Only two things.
 
-**1. Your reference curves, as CSV.** One row per bias point. The I–V file
+**1. Your reference curves, as CSV.** One row per bias point. The I-V file
 needs `device`, `sweep` (`IdVg` or `IdVd`), `bias`, `vg`, `vd`, and a current
-column. The C–V file needs `device`, `vd`, `vg`, `Cgg_F`. Both may carry a
+column. The C-V file needs `device`, `vd`, `vg`, `Cgg_F`. Both may carry a
 `usable` column; rows marked otherwise are excluded at load time and the count
 is printed. Full column lists are in
 [PARAMETER_EXTRACTION.md](PARAMETER_EXTRACTION.md).
 
 **2. Your device's fixed structural parameters**, in the `fit.structures:`
 block of your spec. These are measurements of the device you simulated, and the
-optimizer is never allowed to move them — letting it would let a current error
+optimizer is never allowed to move them - letting it would let a current error
 be hidden by quietly resizing the transistor.
 
 ### If your simulator is not HSPICE
@@ -212,7 +212,7 @@ be hidden by quietly resizing the transistor.
 Reading an HSPICE `.lis` listing is built in. Another simulator needs a small
 parser returning `(voltage_array, current_array)` for one sweep. Follow
 `tcadopt/l3_exec/hspice_parser.py`: it parses the `.print` tables rather than
-the binary sweep file, precisely so the format does not have to be assumed —
+the binary sweep file, precisely so the format does not have to be assumed -
 a printed table carries its own column headers. Do the same for yours and the
 rest of the engine is unchanged.
 
@@ -223,8 +223,8 @@ plain format strings at the bottom of `tcadopt/l2_decks/cardgen.py`.
 
 - **Write `VERSION` explicitly and check it landed.** A compact model defaults
   to an old revision that may not support your geometry at all. Worse, the log
-  will tell you what it actually used — so grep for it before trusting a run.
-  One C–V run in this project's own history burned eleven hours of wall clock
+  will tell you what it actually used - so grep for it before trusting a run.
+  One C-V run in this project's own history burned eleven hours of wall clock
   producing clean, complete, useless data because a stale copy of the deck was
   in the run directory and the log said `Metal Workfunction = 4.72` when the
   intended value was 4.791.
