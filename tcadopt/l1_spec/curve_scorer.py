@@ -57,6 +57,50 @@ a single blended number cannot tell you that.
 I_split defaults to the same constant-current threshold used to define V_th, so
 "sub-threshold" here means the same thing it means everywhere else in the
 project rather than being a new arbitrary line.
+
+WHAT CHANGED IN v1.1.3, AND WHY -- THE NOISE FLOOR HAD ONE UNIT
+---------------------------------------------------------------
+v1.1.2 carried a single `rel_floor`, documented as "currents below this are
+noise", default 1e-14 A. It was applied to EVERY target:
+
+    good = isfinite(model) & isfinite(ref) & (|ref| > rel_floor)
+
+`kind="cv"` targets hold CAPACITANCE, not current. The reference C-V of this
+project runs from 2.98e-17 F to 5.94e-17 F. Every one of those numbers is
+smaller than 1e-14, so `good` was False at every C-V point, every C-V sweep was
+discarded, and the residual the optimizer and the Jacobian were built from
+contained I-V points ONLY.
+
+It was silent. `breakdown()` reported the sweep as `missing`, which the caller
+read as "this parameter set does not simulate", and the C-V curves were in fact
+being simulated and parsed perfectly. Measured on the real run:
+
+    targets            10 sweeps, 990 points
+    residual           804 points          <- 8 I-V sweeps only
+    discarded          186 = 182 C-V points (ALL of them)
+                           +   4 I-V points at Vd=0, where the TCAD reference
+                               is ~1e-19 A and the floor is doing its job
+
+The consequence was not a small bias. It made every capacitance parameter --
+CFS, CFD, CGBO, DELTAWCV, QMTCENCV, QM0, PCLMCV -- report a Jacobian column of
+EXACTLY 0.0 and be certified "cannot be determined by this data", in the same
+run whose own one-at-a-time probes showed four of them moving Cgg by tens of
+percent. A derivative of a residual that does not contain C-V cannot see a
+C-V-only parameter. The number was right; the question was void.
+
+THE FIX: a noise floor is a property of the QUANTITY, so there is now one per
+kind, and `floor_for(kind)` is the single place that decides.
+
+  iv : `rel_floor`, unchanged, 1e-14 A. Every existing I-V result is therefore
+       bit-identical -- 804 points before, 804 points after.
+  cv : `cap_floor`, 1e-21 F. Grounded, not guessed: HSPICE prints the AC
+       current to 7 significant figures (`-356.9422p`), so the smallest change
+       it can express is 1e-16 A, i.e. 1e-16/(2*pi*1e6) = 1.59e-23 F of
+       capacitance. (That is also, to 4 digits, the 1.592e-23 F bias-spread
+       measured in the Weff regression test -- the C-V chain is at its print
+       resolution and nothing else.) 1e-21 F is ~63 print quanta: high enough
+       to reject a zero or a parse artefact, ~30000x below the smallest real
+       value in the data, so it discards nothing physical.
 """
 import math
 
@@ -111,13 +155,25 @@ class CurveResidualScorer(object):
     mode = "curve_residual"
 
     def __init__(self, targets, i_split=1.0e-7, w_sub=1.0, w_on=1.0,
-                 rel_floor=1.0e-14, report=None):
+                 rel_floor=1.0e-14, cap_floor=1.0e-21, report=None):
         self.targets = list(targets)
         self.i_split = float(i_split)
         self.w_sub = float(w_sub)
         self.w_on = float(w_on)
-        self.rel_floor = float(rel_floor)   # currents below this are noise
+        self.rel_floor = float(rel_floor)   # CURRENTS below this are noise (A)
+        self.cap_floor = float(cap_floor)   # CAPACITANCES below this are noise (F)
         self.report = report or []
+
+    # ------------------------------------------------------------------ floors
+    def floor_for(self, kind):
+        """The noise floor for one kind of target, in that kind's own unit.
+
+        A noise floor is a property of the QUANTITY being compared, so it
+        cannot be a single number shared by amperes and farads. Everything that
+        filters reference points -- this module and l6_verify.identifiability --
+        asks here, so the two can never drift apart again.
+        """
+        return self.cap_floor if kind == "cv" else self.rel_floor
 
     # -------------------------------------------------------------- residuals
     def residuals(self, name, v_ref, i_ref, v_mod, i_mod, kind="iv"):
@@ -127,7 +183,8 @@ class CurveResidualScorer(object):
             return None
         a_ref = np.abs(np.asarray(i_ref, float))
         a_mod = np.abs(i_q)
-        good = np.isfinite(a_mod) & np.isfinite(a_ref) & (a_ref > self.rel_floor)
+        good = (np.isfinite(a_mod) & np.isfinite(a_ref)
+                & (a_ref > self.floor_for(kind)))
         if good.sum() < 3:
             return None
         a_ref, a_mod = a_ref[good], np.maximum(a_mod[good], _EPS)
@@ -232,4 +289,5 @@ def build_curve_scorer(targets, cfg=None):
         w_sub=float(cfg.get("w_subthreshold", 1.0)),
         w_on=float(cfg.get("w_on_state", 1.0)),
         rel_floor=float(cfg.get("current_noise_floor_A", 1.0e-14)),
+        cap_floor=float(cfg.get("capacitance_noise_floor_F", 1.0e-21)),
         report=cfg.get("report"))

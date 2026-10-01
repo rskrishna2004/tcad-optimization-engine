@@ -25,9 +25,9 @@ To extract parameters for an actual device, you connect your circuit simulator
 and point the engine at your reference curves. That is what it is for, and it is
 documented in:
 
-- **[docs/PARAMETER_EXTRACTION.md](../../docs/PARAMETER_EXTRACTION.md)** — the complete start-to-finish guide
-- [docs/WRITING_A_PROBLEM.md](../../docs/WRITING_A_PROBLEM.md) — the `fit:` and `stages:` blocks, every field
-- [docs/CONNECTING_A_SIMULATOR.md](../../docs/CONNECTING_A_SIMULATOR.md) — pointing the engine at your tools
+- **[docs/PARAMETER_EXTRACTION.md](../../docs/PARAMETER_EXTRACTION.md)** - the complete start-to-finish guide
+- [docs/WRITING_A_PROBLEM.md](../../docs/WRITING_A_PROBLEM.md) - the `fit:` and `stages:` blocks, every field
+- [docs/CONNECTING_A_SIMULATOR.md](../../docs/CONNECTING_A_SIMULATOR.md) - pointing the engine at your tools
 
 ## What the self-check demonstrates
 
@@ -39,13 +39,13 @@ will see on a real extraction.
    numbers say which half stalled and therefore which parameters to release.
 
 2. **`phig` comes back essentially exact.** That is the parameter stage 1 is
-   designed to determine — the gate work function, which is what sets the
+   designed to determine - the gate work function, which is what sets the
    threshold voltage in a surface-potential model that has no `VTH0`.
 
 3. **Some parameters come back badly wrong, and that is the correct result.**
    The stand-in model was built so that `CIT`, `CDSC` and `NFACTOR` enter only
    through one sum, and `ETA0` and `DSUB` only through one product. Their
-   individual values are therefore not determined by the data at all — only
+   individual values are therefore not determined by the data at all - only
    their combination is. No fitting method can recover them, and a tool that
    reports three confident numbers there is misleading you.
 
@@ -65,5 +65,5 @@ will see on a real extraction.
 device's geometry for the best electricals. This one checks the **extraction**
 path: fit a model's parameters to curves you already have. They share the
 surrogate, the trust region and the database, so if one runs the other almost
-certainly will too — but they exercise different objectives and different
+certainly will too - but they exercise different objectives and different
 evaluators, so both are worth running once.

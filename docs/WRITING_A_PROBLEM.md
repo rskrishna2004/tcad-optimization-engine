@@ -11,7 +11,7 @@ Real examples of both live in the `problems/` folder.
 
 ---
 
-# Part 1 — A design problem
+# Part 1 - A design problem
 
 ---
 
@@ -173,7 +173,7 @@ budget:
 
 ---
 
-# Part 2 — A fit problem
+# Part 2 - A fit problem
 
 A fit problem answers a different question. The device is fixed; the unknowns
 are a compact model's parameters, and "better" means the model's curve lies on
@@ -269,7 +269,7 @@ own without repeating the ones before it.
 
 ## Tips for good fit problem files
 
-- **Order the stages by which bias region determines what.** Threshold and swing from a low-drain transfer curve; drain-induced effects from *two* drain biases, because the effect is by definition the difference between them; transport from the on state; capacitance from C–V, which the DC fit never saw at all.
+- **Order the stages by which bias region determines what.** Threshold and swing from a low-drain transfer curve; drain-induced effects from *two* drain biases, because the effect is by definition the difference between them; transport from the on state; capacitance from C-V, which the DC fit never saw at all.
 - **Free only what that region can determine.** A stage with more free parameters than the data has independent directions will produce confident numbers that mean nothing. Run the identifiability check to find out how many directions you actually have.
 - **Never free a structural dimension.** If a dimension is genuinely uncertain, that is a measurement problem, and fitting it hides the problem instead of solving it.
 - **Bound narrowly where you already have a measurement.** Parasitic capacitances you measured belong in a tight range, so the stage refines a measurement rather than inventing one.

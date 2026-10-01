@@ -252,21 +252,21 @@ This tells you whether the champion holds up under a finer mesh and under small 
 There are only three places you ever change anything. You never edit engine
 source code.
 
-**1. Your problem file** `problems/<name>.yaml` — what to optimize:
-- `parameters` — the design variables and their fabricable ranges
-- `objectives` — what "better" means (single-objective or Pareto)
-- `constraints` — hard bounds and relationships the design must satisfy
-- `budget.parallel` — how many simulations run at once (see TUNING.md)
-- `budget.max_evals` — total simulation budget (see TUNING.md)
+**1. Your problem file** `problems/<name>.yaml` - what to optimize:
+- `parameters` - the design variables and their fabricable ranges
+- `objectives` - what "better" means (single-objective or Pareto)
+- `constraints` - hard bounds and relationships the design must satisfy
+- `budget.parallel` - how many simulations run at once (see TUNING.md)
+- `budget.max_evals` - total simulation budget (see TUNING.md)
 
-**2. Your deck configuration** `decks.yaml` — which deck files the engine runs:
+**2. Your deck configuration** `decks.yaml` - which deck files the engine runs:
 - one entry per `device_class`, giving the structure file, device file, the
   mesh file it produces, and the results file it writes
 - these are all your own filenames; edit them to match your decks
 - this replaces what used to be hardcoded, so a new device is a new YAML entry,
   never a code change
 
-**3. Environment variables** — which tools the engine calls and for how long:
+**3. Environment variables** - which tools the engine calls and for how long:
 
 ```bash
 export TCADOPT_STRUCTURE_TOOL="your_structure_tool"   # required

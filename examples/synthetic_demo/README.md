@@ -22,9 +22,9 @@ for the real thing.
 To optimize an actual device, you connect your TCAD simulator and run a real
 campaign. That is what the engine is for, and it is documented in:
 
-- **[docs/WORKFLOW.md](../../docs/WORKFLOW.md)** — the complete start-to-finish guide
-- [docs/CONNECTING_A_SIMULATOR.md](../../docs/CONNECTING_A_SIMULATOR.md) — pointing the engine at your tools
-- [docs/TUNING.md](../../docs/TUNING.md) — setting parallelism and budget for your machine
+- **[docs/WORKFLOW.md](../../docs/WORKFLOW.md)** - the complete start-to-finish guide
+- [docs/CONNECTING_A_SIMULATOR.md](../../docs/CONNECTING_A_SIMULATOR.md) - pointing the engine at your tools
+- [docs/TUNING.md](../../docs/TUNING.md) - setting parallelism and budget for your machine
 
 ## What the self-check demonstrates about the optimizer
 

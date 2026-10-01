@@ -55,7 +55,7 @@ silent and complete: no invariant ever fired, no result was ever quarantined,
 and physics seeding returned nothing on every campaign, so the
 `[physics-seed]` line described above never appeared. If you ran v1.0.0 or
 v1.0.1 and never saw that line, this is why. Nothing about your results was
-wrong — the engine simply was not applying the guard it advertised. Both
+wrong - the engine simply was not applying the guard it advertised. Both
 features work from v1.1.0 onward, and the lookup now tries the shipped location
 first and the old one second, so a repository that really does keep a top-level
 `knowledge/` folder still works.
@@ -78,7 +78,7 @@ Keep invariants conservative: they should encode laws that are genuinely impossi
 
 The guard and the seeder both apply to the design path, where each trial
 produces figures of merit that an invariant can judge. An extraction trial
-produces a curve, so the same invariants do not apply directly — a fit that
+produces a curve, so the same invariants do not apply directly - a fit that
 matches the reference curve is by construction as physical as the reference.
 
 Extraction gets its equivalent protection somewhere else, and it is worth
@@ -94,5 +94,5 @@ knowing which is which:
 - **The identifiability check** plays the role the physics guard plays for
   trustworthiness, but it catches a different failure. The guard catches a
   result that is impossible. Identifiability catches a result that is
-  *arbitrary* — a number the data could never have determined. Neither shows up
+  *arbitrary* - a number the data could never have determined. Neither shows up
   in the score, which is why both are separate measurements.
