@@ -15,7 +15,7 @@ quoting real output that contains those characters on purpose.
 Run it from the repository root. It exits non-zero in --check mode if anything
 would change, so it can go in a pre-commit hook.
 
-Needs Python 3.6 or newer.
+Works on Python 2.7 and 3.x, because simulator hosts are often old.
 """
 
 from __future__ import print_function
@@ -27,7 +27,18 @@ import sys
 # Each entry is the code point, its plain replacement, and a readable name.
 # Written as code points so that this file is itself plain ASCII: a tool that
 # removes these characters should not contain any, or it trips its own check.
-RULES = [(chr(c), r, n) for c, r, n in [
+def uchr(code):
+    """The character at this code point, on Python 2 and on Python 3.
+
+    Python 2's chr() refuses any code point above 255, and Python 2's
+    unichr() does not exist in Python 3, so neither name can simply be
+    written down here. Spelling the code point as an escape and letting the
+    codec read it works on both, with no version test anywhere.
+    """
+    return (u"\\u%04x" % code).encode("ascii").decode("unicode_escape")
+
+
+RULES = [(uchr(c), r, n) for c, r, n in [
     (0x2014, "-",   "em dash"),
     (0x2013, "-",   "en dash"),
     (0x2018, "'",   "left single quote"),

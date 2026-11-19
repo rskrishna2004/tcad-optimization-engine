@@ -495,7 +495,14 @@ def lm_align(evaluate, residual, params, names, ranges, n_iter=12,
             gain = (S - Ss[kb][0]) / S
             act = S - Ss[kb][0]
             pr = meta[kb]["pred"]
-            rho = (act / pr) if pr > 0 else float("nan")
+            # v1.1.20: a predicted reduction of zero made rho NaN, which
+            # then printed as "rho nan" and, worse, made the lambda update
+            # below take the `else` branch silently because every comparison
+            # against NaN is false. A step that gained without the model
+            # predicting it is a step the model UNDERSTATED, so the honest
+            # reading is a large rho, not no rho. Reported as such, capped so
+            # the printout stays readable.
+            rho = (act / pr) if pr > 0 else 99.0
             u_prev = u
             u, r, S = trials[kb], Ss[kb][1], Ss[kb][0]
             r_dat = Ss[kb][2]
@@ -504,8 +511,9 @@ def lm_align(evaluate, residual, params, names, ranges, n_iter=12,
             mv = np.abs(u - u_prev) / cap
             top = [names[k] for k in np.argsort(-mv)[:3] if mv[k] > 1e-6]
             say("    LM it %d: S -> %.6g  (-%.2f%%)  lambda %.2g  step x%.2f"
-                "  rho %.2f" % (it, S, 100.0 * gain, meta[kb]["lam"],
-                                meta[kb]["alpha"], rho))
+                "  rho %s" % (it, S, 100.0 * gain, meta[kb]["lam"],
+                              meta[kb]["alpha"],
+                              ">99" if rho >= 99.0 else "%.2f" % rho))
             if inert_names or dead or top:
                 say("             moved most: %s%s%s"
                     % (_fmt_names(top),
@@ -787,3 +795,51 @@ def scorer_residual(targets, curves, i_split, w_sub=1.0, w_on=1.0,
             e = nrm / np.sqrt(n)            # exactly the scorer's own RMS
             blocks.append(u * np.sqrt(wt * e) / nrm)
     return np.concatenate(blocks) if blocks else None
+
+
+def format_rails(res, ranges, title=None):
+    """The parameters a fit finished hard against a box end, v1.1.20.
+
+    `lm_align` has always returned this as `at_bound` and no caller printed
+    it. It is worth printing every time, because a railed parameter is never
+    an answer. Step 22's own PART 4 drove ETAMOB to exactly 0.0, the bottom of
+    its box, at every rung of a seven-rung ladder, and nothing said so: the
+    mobility degradation term was being switched off and the ladder's seven
+    I-V totals were each slightly pessimistic because of it.
+
+    Three things a rail can mean, and the report says which to check:
+      * the term the parameter belongs to is inactive in this configuration,
+        so the fit is chasing an effect worth nothing and runs to the end;
+      * the parameter is standing in for a term that is missing;
+      * the box is genuinely too narrow, which is the LEAST likely of the
+        three and the one people reach for first.
+    """
+    rails = list(res.get("at_bound") or [])
+    L = [("    " + (title or "parameters that finished against a box end"))]
+    if not rails:
+        L.append("      none. Every fitted parameter found its answer inside"
+                 " its own box.")
+        return "\n".join(L)
+    got = res.get("params") or {}
+    L.append("      %-14s %-14s %-14s %-14s %s"
+             % ("parameter", "value", "box low", "box high", "which end"))
+    for n in sorted(rails):
+        rg = (ranges or {}).get(n)
+        lo, hi = (rg[0], rg[1]) if rg and len(rg) >= 2 else (None, None)
+        v = got.get(n)
+        end = "-"
+        if v is not None and lo is not None and hi is not None:
+            span = abs(float(hi) - float(lo)) or 1.0
+            end = ("LOW" if abs(float(v) - float(lo)) / span < 1e-6
+                   else ("HIGH" if abs(float(v) - float(hi)) / span < 1e-6
+                         else "near an end"))
+        L.append("      %-14s %-14s %-14s %-14s %s"
+                 % (n,
+                    "-" if v is None else "%.6g" % v,
+                    "-" if lo is None else "%.6g" % lo,
+                    "-" if hi is None else "%.6g" % hi, end))
+    L.append("      A box end is a fence, not an answer. Before widening it,"
+             " sweep the parameter")
+    L.append("      across its whole range alone and see how much residual"
+             " the range is worth.")
+    return "\n".join(L)

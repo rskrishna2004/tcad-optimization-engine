@@ -245,3 +245,7 @@ A card with four honest limitations stated is more useful than a card with
 none stated, because the reader knows what they are holding.
 
 **Next:** [When it goes wrong](GAA_TROUBLESHOOTING.md)
+
+If the checks on this page all pass and you are wondering whether there is
+still something left to find, that question has its own page:
+[Knowing when it is finished](GAA_WHEN_TO_STOP.md).

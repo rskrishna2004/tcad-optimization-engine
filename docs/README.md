@@ -38,24 +38,32 @@ gate-all-around device filled in: which sweeps to run, how to build the
 reference data, the parts of the model card that are easy to get wrong, and
 what to do about the charge.
 
-Read them in this order. Each one links to the next.
+Read them in this order. Each one links to the next. Steps 1 to 4 get you
+running, steps 5 and 6 decide what better means, steps 7 to 11 are the
+extraction, and steps 12 to 14 are how you know it is finished.
 
 2. **[GAA_COMPACT_MODEL.md](GAA_COMPACT_MODEL.md)** - the route map. **Start here for this path** and read it all the way down before opening anything else.
 3. [GAA_WHAT_YOU_NEED.md](GAA_WHAT_YOU_NEED.md) - the TCAD runs to have in hand, how to tell one really finished, the structure numbers to write down.
 4. [GAA_REFERENCE_DATA.md](GAA_REFERENCE_DATA.md) - the two CSV files, the gate row, and why the total capacitance is not enough.
-5. [GAA_MODEL_CARD.md](GAA_MODEL_CARD.md) - LEVEL 72, VERSION, GEOMOD 5, the five-node element, and the netlist rules.
+5. [GAA_MODEL_CARD.md](GAA_MODEL_CARD.md) - LEVEL 72, VERSION, GEOMOD 5, the element with five nodes, and the netlist rules.
 6. [GAA_FIRST_RUN.md](GAA_FIRST_RUN.md) - one command at a time, with what every printed line means.
-7. [GAA_EXTRACTION_ORDER.md](GAA_EXTRACTION_ORDER.md) - which parameters come out in which stage, and why that order.
-8. [GAA_FREE_ZONE.md](GAA_FREE_ZONE.md) - the parameters that cannot change the drain current, proved and then measured.
-9. [GAA_CHARGE_PARTITION.md](GAA_CHARGE_PARTITION.md) - the gate row, pinch-off, and the parameter the current and the charge have to share.
-10. [GAA_CHECKING_RESULTS.md](GAA_CHECKING_RESULTS.md) - identifiability, physicality, and what finished looks like.
-11. [GAA_TROUBLESHOOTING.md](GAA_TROUBLESHOOTING.md) - every failure this project hit, the message it printed, and the fix.
+7. **[GAA_THE_OBJECTIVE.md](GAA_THE_OBJECTIVE.md)** - three things get called "the error" and they disagree. Pick one before you fit anything.
+8. **[GAA_THE_RULE.md](GAA_THE_RULE.md)** - the acceptance rule, written before the run, with every threshold read off the baseline.
+9. [GAA_EXTRACTION_ORDER.md](GAA_EXTRACTION_ORDER.md) - which parameters come out in which stage, and why that order.
+10. [GAA_FREE_ZONE.md](GAA_FREE_ZONE.md) - the parameters that cannot change the drain current, proved and then measured.
+11. [GAA_CHARGE_PARTITION.md](GAA_CHARGE_PARTITION.md) - the gate row, pinch off, the parameter the current and the charge share, and the limit that ends the extraction.
+12. **[GAA_THE_JOINT_FIT.md](GAA_THE_JOINT_FIT.md)** - what a one at a time scan cannot find, and how to call the aligner so it works first time.
+13. **[GAA_WHEN_TO_STOP.md](GAA_WHEN_TO_STOP.md)** - close every direction the card could still move in, each with a measurement.
+14. [GAA_CHECKING_RESULTS.md](GAA_CHECKING_RESULTS.md) - identifiability, physicality, and what finished looks like.
+15. [GAA_TROUBLESHOOTING.md](GAA_TROUBLESHOOTING.md) - every failure this project hit, the message it printed, and the fix.
+16. **[GAA_CASE_STUDY_NFET.md](GAA_CASE_STUDY_NFET.md)** - the whole extraction with real numbers, including the eight mistakes and what each cost.
 
 ## Understand it deeper (optional, all paths)
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - how each layer works, and how one optimizer core serves two jobs.
 - [OPTIMIZER_BACKENDS.md](OPTIMIZER_BACKENDS.md) - the default backend vs the optional BoTorch backend.
 - [PHYSICS_KNOWLEDGE.md](PHYSICS_KNOWLEDGE.md) - how physics guides the search and guards the results.
 - [CASE_STUDY.md](CASE_STUDY.md) - a real optimization, with the mistakes and lessons.
+- [GAA_CASE_STUDY_NFET.md](GAA_CASE_STUDY_NFET.md) - the same for extraction: a real 4 sheet nanosheet nFET, every number and every mistake.
 
 ## The things you ever edit
 

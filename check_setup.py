@@ -26,6 +26,25 @@ def check_python():
     ok = sys.version_info[:2] >= MIN_PYTHON
     print("Python  : %s  (%s)" % (
         sys.version.split()[0], "OK" if ok else "TOO OLD, need 3.6+"))
+    if not ok:
+        # Plenty of simulator hosts still answer `python` with 2.x while a
+        # new enough interpreter sits right beside it under another name.
+        # Saying so here saves a reader from installing anything.
+        import subprocess
+        for name in ("python3", "python3.12", "python3.11", "python3.10",
+                     "python3.9", "python3.8", "python3.7", "python3.6"):
+            try:
+                out = subprocess.check_output(
+                    [name, "-c", "import sys; print(sys.version.split()[0])"],
+                    stderr=subprocess.STDOUT)
+            except Exception:
+                continue
+            found = out.decode("utf-8", "replace").strip()
+            print("          `%s` on this machine is %s. Use that instead:"
+                  % (name, found))
+            print("              %s check_setup.py" % name)
+            print("              %s check_docs.py" % name)
+            break
     return ok
 
 

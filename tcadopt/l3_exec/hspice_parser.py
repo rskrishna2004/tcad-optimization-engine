@@ -670,7 +670,7 @@ def cv_gate_row(curves, freq, block=None, tol_real=1.0e-3):
     `closure_pct` so the identity can be checked rather than assumed -- the
     reference CSV carries the same check and reads 0.000002%.
 
-    Returns {"vg":..., "cgg":..., "cgd":..., "cgs":..., "cgb":..., "closure_pct":...}
+    Returns {"vg":…, "cgg":…, "cgd":…, "cgs":…, "cgb":…, "closure_pct":…}
     or None when the listing has only the gate column (a pre-v1.1.16 deck).
     """
     if not curves:

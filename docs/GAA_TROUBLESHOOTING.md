@@ -325,6 +325,200 @@ the two it actually needs costs two, and gives the same answer.
 
 ---
 
+## The step says it succeeded and the card got worse
+
+### The weighted score improved and the honest error did not
+
+**What you see.** A step reports a healthy improvement and the card it ships
+is worse than the card it started from.
+
+**What it is.** You are optimising a weighted objective and reporting an
+unweighted one. The weights were computed from the residuals of one card, and
+then the card changed underneath them. A curve that was nearly perfect drew a
+tiny weight, which an optimiser reads as "this curve does not matter", and it
+was then free to triple.
+
+On this project a weight of 0.02 on a curve sitting at 0.184 per cent let it
+rise to 0.667, and the step shipped a card 8.17 per cent worse on the pooled
+measure while its weighted score fell 16.8 per cent.
+
+**The fix.** Minimise the pooled error over every point, which needs no
+weights at all. [Which number you are minimising](GAA_THE_OBJECTIVE.md) has
+the arithmetic and the code. If you must use weights, recompute them every
+iteration, and run `tcadopt/l6_verify/floor.stale_weights` to find the ones
+that no longer describe anything.
+
+### A card got into the pipeline without being guarded
+
+**What you see.** The log shows the guard refusing something, so the guard is
+clearly working, and the card is still worse.
+
+**What it is.** The guard is wrapped around your fit and nothing else. A
+ladder, a scan or a closed form solve can all produce a card, and if any of
+those feeds the next part directly, it never passes the guard.
+
+**The fix.** Write the rule as a function and call it on every candidate from
+every source. [The rule](GAA_THE_RULE.md) has the function.
+
+### A refused result reverted to the wrong card
+
+**What you see.** Several parts of a step each report a sensible improvement
+and the step as a whole is worse.
+
+**What it is.** When a part was refused, the revert went back to whatever the
+previous part left rather than to the card the step started with. Everything
+after that is measured against a card that has already regressed.
+
+**The fix.** Keep the entry card in its own variable, never overwrite it, and
+revert to it. Say so in the rule's printed text, so a reader of the log knows
+before anything runs.
+
+---
+
+## A reproduce check fails and only half the curves moved
+
+### The current reproduces exactly and the capacitance does not
+
+**What you see.**
+
+```
+      what                              printed before    this run     drift
+      the eight current sweeps             0.014114     0.014114  0.00e+00
+      the eight capacitance curves         0.026916     0.040472  1.36e-02
+```
+
+**What it is.** This pattern is a gift. A drift in the machine, the simulator,
+the library or the card transfer would have moved the current too. Only the
+charge moved, so whatever changed touches only the charge equations.
+
+Two causes account for nearly every instance.
+
+**You loaded the wrong card.** A constant named `CARDnn` in an extraction
+script very often means the card step nn **started** from, not the card it
+produced. Check the number against what the earlier log printed for its own
+starting point.
+
+**You wrote a value that looked like a default and was not.** If a parameter's
+declared default is a reference to another parameter rather than a number, the
+model may assign a **computed** variable, not the declared one. `vfbsdcv`
+defaults to `vfbsd`, which is declared 0.0, but the model assigns
+`vfbsdcv_v = vfbsd_v`, the computed flatband voltage of the source and drain,
+which on this device is about +0.43 V. Putting an explicit 0.0 on the card
+overrode it and moved the capacitance from 0.026916 to 0.075682 while the
+current did not move at all.
+
+**The fix for both.** Stop reading names. Simulate every card that could be
+the baseline and pick the one that matches the numbers the earlier log
+printed. [The rule](GAA_THE_RULE.md) has the table and the code.
+
+---
+
+## A parameter will not go below a round number
+
+### Every fit ends with it sitting on exactly 0.02
+
+**What you see.** A parameter finishes on the same round value in run after
+run, and every value you try above it is worse.
+
+**What it is.** Either the model clamps it there, or a lower bound in your own
+range does. Those look identical in a log and they are completely different
+facts, and in this case it mattered a lot: `ckappad` was the only parameter in
+the charge model whose two drain biases move in opposite directions, which was
+the exact shape of the remaining error.
+
+**The fix.** Measure it, without reading any source. Put the value on a card,
+then put smaller values on cards, and compare the curves point by point. If
+the model clamps, every smaller value returns curves identical to the last
+bit:
+
+```
+      value        worst change vs 0.02      verdict
+      0.01           0.0000e+00 aF             identical, clamped
+      0.005          0.0000e+00 aF             identical, clamped
+      0.001          0.0000e+00 aF             identical, clamped
+      1e-05          0.0000e+00 aF             identical, clamped
+```
+
+[Knowing when it is finished](GAA_WHEN_TO_STOP.md) has the code. Twelve
+simulations turn a nagging doubt into a line in your ledger.
+
+---
+
+## The aligner will not run, or runs and seems to do nothing
+
+### `TypeError: cannot convert dictionary update sequence element #0 to a sequence`
+
+**What it is.** You passed `params` as a list of numbers. `lm_align` does
+`dict(params)` internally, so `params` is the whole card as a dict and `names`
+selects which of its entries to fit.
+
+**The fix.**
+
+```python
+out = lm_align(evaluate, residual, dict(card), names, ranges_by_name,
+               n_iter=10, tag="fit", post=tie, log=print)
+new_card = out["params"]
+```
+
+### The aligner returns and nothing in it looks like a parameter
+
+**What it is.** It returns a result dict, not a card. The card is under
+`params`. The top level holds `params`, `ok`, `S0`, `S`, `n_evals`, `names`,
+`moved`, `at_bound`, `inert` and `history`, so a reader looking for a
+parameter name at the top level finds nothing and concludes the fit failed. It
+did not.
+
+### It returns cleanly and the card has not changed
+
+**What it is.** Check how many simulations it triggered. A convention that is
+almost right can return a well formed result dict having evaluated one card,
+which is not enough to have built a Jacobian. Wrap your `evaluate` in a
+counter and compare candidates by work done rather than by whether they
+returned. [Walking one knob at a time, and the fit](GAA_THE_JOINT_FIT.md) has
+the probe.
+
+### It stops after five of the ten iterations you asked for
+
+**What it is.** Not a bug. `tol` defaults to 0.01 and it stops after two
+iterations that each gain less than one per cent. Read the gain sequence
+before deciding whether more iterations would pay:
+
+```
+    LM it 1: S -> 0.555387  (-4.95%)
+    LM it 2: S -> 0.548079  (-1.32%)
+    LM it 3: S -> 0.541461  (-1.21%)
+    LM it 4: S -> 0.538201  (-0.60%)
+    LM it 5: S -> 0.536466  (-0.32%)
+```
+
+Those shrink by about 0.65 each time, so the rest of that basin is worth about
+0.3 per cent of the pooled error. If instead the last gain is still large, the
+fit was cut off and more iterations will help.
+
+Also read the `at_bound` list it returns. A fit that finishes with several
+parameters pinned against the edge of their boxes has been stopped by a box
+you drew, not by a minimum.
+
+---
+
+## A walk finds nothing and a fit finds plenty
+
+**What you see.** You walk thirty parameters one at a time, keep almost
+nothing, and conclude the card is finished. A fit over the same parameters
+then finds several per cent.
+
+**What it is.** Not a contradiction. A walk finds a point where no single
+parameter helps. A fit can move several at once, and two parameters that only
+help together are invisible to a walk. On this device 300 one at a time
+simulations found 0.44 per cent and one fit found 4.18.
+
+**What to do.** Both, in that order. The walk is safe and it diagnoses which
+parameters are alive. The fit finds the directions the walk cannot see. And
+write the walk's card to disk before you call the aligner, so a convention you
+have read but never run cannot cost you work that already succeeded.
+
+---
+
 ## Still stuck
 
 Keep the whole log. Not the last twenty lines, the whole file. On this project
@@ -338,5 +532,9 @@ The four questions that found the cause most often:
 2. Is the deck that ran the deck I think ran? Check the file in `runs_fit/`.
 3. Does the reference data say what I think it says? Print it.
 4. Is the thing being optimised the same thing being judged?
+
+**Next:** [A worked extraction, start to finish](GAA_CASE_STUDY_NFET.md),
+which is this whole project with the real numbers, including every failure on
+this page in the order it actually happened.
 
 **Back to the route map:** [GAA_COMPACT_MODEL.md](GAA_COMPACT_MODEL.md)

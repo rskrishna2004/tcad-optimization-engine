@@ -78,6 +78,8 @@ outside the switch.
 
 # name -> (what it does, the proving line(s) of bsimcmg_body.include,
 #          True if it needs CVMOD = 1 to act at all)
+VERSION = "1.1.30"
+
 FREE = {
     # ---- the parasitic floor: overlap, fringe, gate-to-substrate --------
     "cgso":     ("gate-source overlap, per unit width", "2512", False),
@@ -105,6 +107,32 @@ FREE = {
     "dlc":      ("length the charge is computed on", "168, 2471", False),
     "dlcacc":   ("accumulation length (bulkmod != 0)", "169", False),
     "qmtcencv": ("charge-centroid thickness -> coxeff", "2240, 2471", False),
+    #  v1.1.29. THESE THREE BELONG TOGETHER AND ONLY ONE OF THEM WAS HERE.
+    #  bsimcmg_body.include 2236-2241 is four lines:
+    #      T4 = qia / qm0;
+    #      T5 = 1.0 + pow(T4, PQM_i);
+    #      Tcen = Tcen0 / T5;
+    #      coxeff = 1.0/(1.0/(cox*eot/toxp) + Tcen*QMTCENCV_i/epssub);
+    #  QMTCENCV is the PREFACTOR: it scales the series thickness, so it is a
+    #  straight multiplier on all three channel charges at every bias. QM0 is
+    #  the charge at which the centroid starts moving towards the surface, so
+    #  it sets WHERE along the gate sweep the capacitance rise steepens. PQM
+    #  is the exponent, so it sets HOW FAST. Shape lives in those two, and
+    #  for twelve steps the engine was allowed the multiplier and not the
+    #  shape. Both have sat at their declared defaults, 1.0e-3 V and 0.66,
+    #  through every capacitance fit this project has run.
+    #  Found by l4_knowledge.depgraph, which works the list out from the
+    #  source instead of being told it.
+    "qm0":      ("knee charge of the centroid correction", "2236-2240",
+                 False),
+    "pqm":      ("exponent of the centroid correction", "2236-2240", False),
+    #  Tcen0's geometric prefactor, line 703-704. aqmtcen defaults to 0, which
+    #  makes MTcen exactly 1, so Tcen0 is the bare 2*Ach/Weff_UFCM. Fitting it
+    #  is DEGENERATE with qmtcencv: both multiply Tcen linearly. Listed so
+    #  that is written down, not fitted.
+    "aqmtcen":  ("geometric prefactor of Tcen0, degenerate with qmtcencv",
+                 "703-704", False),
+    "bqmtcen":  ("geometric scale of Tcen0", "703-704", False),
     "qmtcencva": ("the same, accumulation (bulkmod != 0)", "2248", False),
     # ---- the C-V saturation family -------------------------------------
     "psatcv":   ("exponent of DvsatCV", "2374-2380", False),
@@ -179,6 +207,46 @@ def format_table(cvmod=0):
                  " 'yes' above are")
         L.append("  not read by the model at all right now.")
     return "\n".join(L)
+
+
+#  v1.1.29. Parameters that LOOK free, are free by the source, and must not
+#  be fitted anyway, with the reason. A free zone is a list of things an
+#  optimiser is allowed to touch, and "allowed" is not the same as "sensible".
+DO_NOT_FIT = {
+    "toxp": ("it is charge-only on this card only because rgeomod and "
+             "cgeomod are off -- and it is a MEASURED oxide thickness. "
+             "coxeff reads cox*eot/toxp at line 2240, so fitting toxp while "
+             "eot is held is a pure gain on the oxide term, degenerate with "
+             "qmtcencv and dishonest about the device"),
+    "aqmtcen": ("linearly degenerate with qmtcencv, which is already free"),
+    "epsrsp": ("the spacer permittivity. Dead with cgeomod = 0, and a "
+               "material constant when it is not"),
+}
+
+
+def cross_check(table, free=None, shared=None):
+    """Compare this hand table with what `depgraph` works out from the source.
+
+    Returns (missing, wrong), where `missing` is charge-only by the source and
+    absent from FREE, and `wrong` is on FREE but not charge-only by the
+    source. Either list being non-empty is a finding, not an error: the hand
+    table was written by reading and the source walk was written by counting,
+    and the two disagreeing is exactly the signal worth printing.
+    """
+    free = dict(free or FREE)
+    shared = dict(shared or SHARED)
+    chg = set((table or {}).get("charge_only") or [])
+    if not chg:
+        return [], []
+    missing = sorted(chg - set(free) - set(shared) - set(DO_NOT_FIT))
+    wrong = sorted(n for n in free if n in (table or {}).get("params_all", [])
+                   and n not in chg)
+    if not wrong:
+        known = set()
+        for k in ("charge_only", "current_only", "both", "neither"):
+            known |= set((table or {}).get(k) or [])
+        wrong = sorted(n for n in free if n in known and n not in chg)
+    return missing, wrong
 
 
 def verify_scope(curves_before, curves_after, iv_names, rel_tol=1.0e-9):

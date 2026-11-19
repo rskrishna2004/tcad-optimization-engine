@@ -6,7 +6,7 @@ in a real design.
 
 This page is the route map for that. Read it once, all the way down, before
 opening any of the pages it links to. It is short on purpose. The detail lives
-in the nine pages after it, and each of those links back here.
+in the fourteen pages after it, and each of those links back here.
 
 ---
 
@@ -73,10 +73,13 @@ first, because everything downstream depends on them.
 
 ---
 
-## The nine steps
+## The fourteen steps
 
 Read them in this order. Each page tells you when you are done with it and
-where to go next.
+where to go next. Steps 1 to 4 get you running. Steps 5 and 6 decide what
+"better" means, and skipping them is the most expensive thing you can do on
+this route. Steps 7 to 11 are the extraction itself. Steps 12 to 14 are how
+you know it is finished and how you write it up.
 
 1. **[What you need before you start](GAA_WHAT_YOU_NEED.md)** - the exact TCAD
    runs to have in hand, how to check one really finished, and the structure
@@ -85,29 +88,43 @@ where to go next.
    output into the two CSV files the engine reads, including the four
    capacitances of the gate row and why the total is not enough.
 3. **[The model card for a nanosheet](GAA_MODEL_CARD.md)** - LEVEL 72,
-   VERSION 111.21, GEOMOD 5, the five-node element, and the deck rules that
+   VERSION 111.21, GEOMOD 5, the five node element, and the deck rules that
    will otherwise cost you an afternoon.
 4. **[Your first run](GAA_FIRST_RUN.md)** - one command at a time, with what
    every printed line means.
-5. **[The extraction order](GAA_EXTRACTION_ORDER.md)** - which parameters
+5. **[Which number you are minimising](GAA_THE_OBJECTIVE.md)** - three
+   different things get called "the error" and they disagree. Pick one before
+   you fit anything, because optimising one and reporting another will ship a
+   worse card and tell you it is better.
+6. **[The rule that decides what may change the card](GAA_THE_RULE.md)** -
+   write the acceptance rule before the run, read every threshold off the
+   baseline, and guard every candidate rather than only the fits.
+7. **[The extraction order](GAA_EXTRACTION_ORDER.md)** - which parameters
    come out in which stage, scored on which sweeps, and why that order and not
    another.
-6. **[The free zone](GAA_FREE_ZONE.md)** - the set of parameters that cannot
+8. **[The free zone](GAA_FREE_ZONE.md)** - the set of parameters that cannot
    change the drain current at all, proved from the model source, and what
    that lets you do.
-7. **[Charge partition, the hard part](GAA_CHARGE_PARTITION.md)** - the gate
-   row, the drain's share of the channel charge, pinch-off, and the one
+9. **[Charge partition, the hard part](GAA_CHARGE_PARTITION.md)** - the gate
+   row, the drain's share of the channel charge, pinch off, and the one
    parameter that the current and the charge have to share.
-8. **[Checking the result](GAA_CHECKING_RESULTS.md)** - identifiability,
-   physicality, distance from default, and what finished actually looks like.
-9. **[When it goes wrong](GAA_TROUBLESHOOTING.md)** - every failure this
-   project has hit, the exact message it prints, and the fix.
-
----
+10. **[Walking one knob at a time, and the fit](GAA_THE_JOINT_FIT.md)** - what
+    a one at a time scan can and cannot find, and how to call the aligner so
+    that it works the first time.
+11. **[Knowing when it is finished](GAA_WHEN_TO_STOP.md)** - no error value
+    means finished. Close every direction the card could still move in, each
+    with a measurement, and the list being complete is the answer.
+12. **[Checking the result](GAA_CHECKING_RESULTS.md)** - identifiability,
+    physicality, distance from default, and what finished actually looks like.
+13. **[When it goes wrong](GAA_TROUBLESHOOTING.md)** - every failure this
+    project has hit, the exact message it prints, and the fix.
+14. **[A worked extraction, start to finish](GAA_CASE_STUDY_NFET.md)** - the
+    whole thing with real numbers, including the eight mistakes and what each
+    one cost. Read it after your first run.
 
 ## How long this takes
 
-Honest numbers, for a single n-type 4-sheet nanosheet against ten reference
+Honest numbers, for a single n-type 4 sheet nanosheet against ten reference
 sweeps, on a machine running eight HSPICE jobs in parallel:
 
 | what | how long |
@@ -115,6 +132,7 @@ sweeps, on a machine running eight HSPICE jobs in parallel:
 | getting the reference data right | a day, and it is worth it |
 | the first current fit, stages 1 to 4 | 2 to 4 hours of compute |
 | the capacitance fit | 2 to 6 hours of compute |
+| closing the ledger, step 11 | about 3 hours across several short runs |
 | understanding what came out | longer than the compute |
 
 The compute is unattended. The thinking is not. Nearly every hour lost on this
@@ -141,6 +159,13 @@ Being clear about this matters more than sounding impressive.
   data could have determined it
 - price a parameter that two objectives disagree about, instead of just
   refusing to move it
+- minimise the pooled error over every point at once, so a curve's share of
+  the gradient equals its share of the error with nothing stored that can go
+  out of date
+- tell you whether a bound a parameter stopped on belongs to the model or to
+  your own range, without reading the model source
+- measure what the fit depends on, not only how good it is, so you can say
+  which part of the agreement rests on something unphysical
 
 **It cannot, yet:**
 
@@ -152,6 +177,10 @@ Being clear about this matters more than sounding impressive.
 - extract a p-type card at the same time as the n-type one. You run it twice.
 - tell you that your reference data is wrong. It will fit whatever you give
   it. Step 2 exists for that reason.
+- give the drain and source of your channel charge a different share. BSIM-CMG
+  has no charge partition parameter, and on the device this guide was built on
+  that single limit is about 40 per cent of the error that is left. Step 9
+  measures it on your device so you can report it rather than chase it.
 
 ---
 
@@ -192,6 +221,18 @@ to. Page 6 lists them with the line numbers that prove it.
 **Identifiability** - whether the data could have determined a parameter at
 all. A fit can be perfect and still be meaningless, so this is measured
 separately from the fit error.
+
+**The pooled error** - the root mean square of the relative error over every
+point of every curve at once, with no per curve averaging anywhere in it. It
+is the number this guide tells you to minimise, and step 5 is why.
+
+**A coordinate minimum** - a card where moving any single parameter makes
+things worse. It is not the same as a card where moving any pair makes things
+worse, and on this device the difference was measured at four per cent.
+
+**The ledger** - the list of every direction the card could still move in,
+each closed by a measurement. Step 11 is how to build one, and a complete
+ledger is what finished means.
 
 ---
 

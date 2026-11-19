@@ -181,9 +181,11 @@ for what changes and the measured comparison.
 
 ## Project status
 
-This is **version 1.1.19**. The engine is functional and has been used on real device optimization campaigns. The extraction path is being hardened on a real 4-sheet gate-all-around nanosheet nFET against Sentaurus TCAD reference data, and every release since 1.1.0 has come out of something that extraction found. See [`CHANGELOG.md`](CHANGELOG.md).
+This is **version 1.2.0**. The engine is functional and has been used on real device optimization campaigns. The extraction path was hardened on a real 4 sheet gate-all-around nanosheet nFET against Sentaurus TCAD reference data, and every release since 1.1.0 came out of something that extraction found. That extraction is now complete, and 1.2.0 is the release that carries everything it learned. See [`CHANGELOG.md`](CHANGELOG.md).
 
-What works today, and what does not, is stated plainly at the end of [`docs/GAA_COMPACT_MODEL.md`](docs/GAA_COMPACT_MODEL.md). The short version is that the current side runs end to end from one problem file, and the charge side is still driven by staged scripts while the method is being settled. It is under active development.
+For a reader who has a gate-all-around device and has never done an extraction, the whole route is [`docs/GAA_COMPACT_MODEL.md`](docs/GAA_COMPACT_MODEL.md) and the fourteen pages it leads to. They are meant to be read in order and each one links to the next. The finished extraction, with every number and every mistake, is [`docs/GAA_CASE_STUDY_NFET.md`](docs/GAA_CASE_STUDY_NFET.md).
+
+What works today, and what does not, is stated plainly in the route map. The short version is that the current side runs end to end from one problem file, the charge side is driven by staged scripts, and the limit on the charge side is now measured rather than suspected: BSIM-CMG has no charge partition parameter, and on the device above that single limit is about 40 per cent of the error that is left. It is under active development.
 
 Feedback, issues, and contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
