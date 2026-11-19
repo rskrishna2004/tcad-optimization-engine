@@ -190,3 +190,7 @@ wrong, the free zone will improve the sizes and not the split. That is the
 subject of the next page.
 
 **Next:** [Charge partition, the hard part](GAA_CHARGE_PARTITION.md)
+
+That page ends with the limit that ends the extraction, and then the route
+continues through [the fit](GAA_THE_JOINT_FIT.md) and
+[knowing when it is finished](GAA_WHEN_TO_STOP.md).

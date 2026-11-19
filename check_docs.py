@@ -34,17 +34,33 @@ CHAIN = [
     "GAA_REFERENCE_DATA.md",
     "GAA_MODEL_CARD.md",
     "GAA_FIRST_RUN.md",
+    "GAA_THE_OBJECTIVE.md",
+    "GAA_THE_RULE.md",
     "GAA_EXTRACTION_ORDER.md",
     "GAA_FREE_ZONE.md",
     "GAA_CHARGE_PARTITION.md",
+    "GAA_THE_JOINT_FIT.md",
+    "GAA_WHEN_TO_STOP.md",
     "GAA_CHECKING_RESULTS.md",
     "GAA_TROUBLESHOOTING.md",
+    "GAA_CASE_STUDY_NFET.md",
 ]
 
 # Characters that are not on a keyboard and should not be in these files.
 # Written as code points so that this file is itself plain ASCII, which means
 # it never trips its own check and it opens cleanly on any interpreter.
-BANNED = dict((chr(c), name) for c, name in [
+def uchr(code):
+    """The character at this code point, on Python 2 and on Python 3.
+
+    Python 2's chr() refuses any code point above 255, and Python 2's
+    unichr() does not exist in Python 3, so neither name can simply be
+    written down here. Spelling the code point as an escape and letting the
+    codec read it works on both, with no version test anywhere.
+    """
+    return (u"\\u%04x" % code).encode("ascii").decode("unicode_escape")
+
+
+BANNED = dict((uchr(c), name) for c, name in [
     (0x2014, "em dash"),
     (0x2013, "en dash"),
     (0x2018, "left single quote"),
@@ -118,7 +134,9 @@ def check_characters(paths):
                 continue
             for ch, name in BANNED.items():
                 if ch in line:
-                    bad.append((rel(p), i, name, line.strip()[:60]))
+                    snip = line.strip()[:60]
+                    snip = snip.encode("ascii", "replace").decode("ascii")
+                    bad.append((rel(p), i, name, snip))
     return bad
 
 

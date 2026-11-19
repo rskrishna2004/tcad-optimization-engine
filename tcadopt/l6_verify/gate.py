@@ -600,3 +600,551 @@ class FrozenGate(object):
         else:
             self.log("      ROLLED BACK -- %s" % rec.get("why", ""))
         return dict(self.card), rec
+
+
+# ===========================================================================
+#  FoMGate -- judge a stage in the units a person signs off, v1.1.20
+# ===========================================================================
+#  WHY THIS EXISTS, and it is the clearest lesson this project has produced.
+#
+#  Step 22's PART 4 froze KSATIV at each of seven values and completely
+#  re-fitted the drain current at every one. At KSATIV = 0.45 the measured
+#  result was:
+#
+#      the scorer's I-V total   0.009557 -> 0.012283   +28.5 %   worse
+#      worst threshold error     0.371 mV -> 0.333 mV            BETTER
+#      worst on-current error    0.792 %  -> 0.794 %             the same
+#      DIBL error                0.05 mV/V -> 0.29 mV/V          still 1.2 %
+#      the drain's share of the channel charge  20.5 % -> 31.8 %  +11 points
+#      the capacitance total    0.041085 -> 0.039869             BETTER
+#
+#  Every gate in this engine judges a scorer total, so every gate would have
+#  refused that card. And refusing it is wrong, because the scorer total is an
+#  internal number and the four quantities underneath it are the ones that go
+#  in a report: threshold voltage, subthreshold slope, on current, DIBL. The
+#  extra 28.5 % is spread thinly over bias points nobody signs off.
+#
+#  So this gate does not look at the total. It is given a budget in
+#  millivolts and per cent, it measures the figures of merit, and it accepts
+#  or refuses on those. It is strictly harder to satisfy than a total in the
+#  places that matter and strictly easier in the places that do not, which is
+#  the whole point.
+#
+#  It is not a replacement for StageGate. Use StageGate when the question is
+#  "did the fit get worse", and this when the question is "would I sign this".
+
+#: the default budget. Deliberately conservative, and meant to be overridden
+#: with numbers the person running the extraction has stated in advance.
+FOM_BUDGET = {
+    "vth_mV": 2.0,        # worst threshold-voltage error, any drain bias
+    "ss_mV_dec": 1.0,     # worst subthreshold-slope error, any drain bias
+    "ion_pct": 2.0,       # worst on-current error, any drain bias
+    "dibl_mV_V": 1.0,     # DIBL error
+}
+
+FOM_LABEL = {
+    "vth_mV": "threshold voltage   [mV]",
+    "ss_mV_dec": "subthreshold slope  [mV/dec]",
+    "ion_pct": "on current          [%]",
+    "dibl_mV_V": "DIBL                [mV/V]",
+}
+
+
+def fom_errors(iv, dibl_model=None, dibl_ref=None):
+    """Worst figure-of-merit errors from a per-sweep model/tcad dictionary.
+
+    `iv` is {sweep: {"model": {...}, "tcad": {...}}} with keys `vth`, `ss_mv`
+    and `ion` in each half, which is the shape `l3_exec.metrics` already
+    produces and the shape this project's own results JSON stores.
+
+    Returns {"vth_mV", "ss_mV_dec", "ion_pct", "dibl_mV_V", "per_sweep"}.
+    Any quantity that cannot be formed is None rather than zero, so a missing
+    measurement can never be mistaken for a passing one.
+    """
+    worst = {"vth_mV": None, "ss_mV_dec": None, "ion_pct": None,
+             "dibl_mV_V": None}
+    per = {}
+    for name in sorted(iv or {}):
+        rec = iv[name] or {}
+        mod, ref = rec.get("model") or {}, rec.get("tcad") or {}
+        row = {}
+        if mod.get("vth") is not None and ref.get("vth") is not None:
+            row["vth_mV"] = 1000.0 * (float(mod["vth"]) - float(ref["vth"]))
+        if mod.get("ss_mv") is not None and ref.get("ss_mv") is not None:
+            row["ss_mV_dec"] = float(mod["ss_mv"]) - float(ref["ss_mv"])
+        if mod.get("ion") not in (None, 0) and ref.get("ion") not in (None, 0):
+            row["ion_pct"] = 100.0 * (float(mod["ion"]) / float(ref["ion"])
+                                      - 1.0)
+        per[name] = row
+        for k in ("vth_mV", "ss_mV_dec", "ion_pct"):
+            if k in row:
+                a = abs(row[k])
+                if worst[k] is None or a > worst[k]:
+                    worst[k] = a
+    if dibl_model is not None and dibl_ref is not None:
+        worst["dibl_mV_V"] = abs(float(dibl_model) - float(dibl_ref))
+    worst["per_sweep"] = per
+    return worst
+
+
+class FoMGate(object):
+    """Accept a stage if the physical figures of merit stay inside a budget.
+
+        g = FoMGate(budget={"vth_mV": 2.0, "ion_pct": 2.0}, log=print)
+        g.open(iv_before, dibl_before, dibl_ref)
+        ...
+        kept = g.close(iv_after, dibl_after, card_before, card_after,
+                       stage="PART 2 -- KSATIV at 0.45")
+
+    `close` returns the card to carry forward. The budget is absolute, not
+    relative to where the stage started: the question is "is this card good
+    enough to sign", not "is it no worse than the last one". A stage that
+    improves a figure of merit but leaves another outside the budget is
+    refused, and the report says which one and by how much.
+    """
+
+    def __init__(self, budget=None, log=None, require_all=True):
+        self.budget = dict(FOM_BUDGET)
+        if budget:
+            self.budget.update(budget)
+        self.log = log
+        self.require_all = bool(require_all)
+        self.before = None
+        self.dibl_ref = None
+        self.rows = []
+
+    def open(self, iv, dibl_model=None, dibl_ref=None):
+        self.dibl_ref = dibl_ref
+        self.before = fom_errors(iv, dibl_model, dibl_ref)
+        if self.log:
+            self.log("    FoM GATE opens. the budget it will judge against:")
+            for k in ("vth_mV", "ss_mV_dec", "ion_pct", "dibl_mV_V"):
+                if k in self.budget:
+                    self.log("      %-30s <= %-10.4g  now %s"
+                             % (FOM_LABEL.get(k, k), self.budget[k],
+                                _fmt(self.before.get(k))))
+        return self.before
+
+    def close(self, iv, dibl_model=None, card_before=None, card_after=None,
+              stage="a stage"):
+        after = fom_errors(iv, dibl_model, self.dibl_ref)
+        fails, misses = [], []
+        for k in sorted(self.budget):
+            cap = float(self.budget[k])
+            got = after.get(k)
+            if got is None:
+                misses.append(k)
+                continue
+            if abs(float(got)) > cap:
+                fails.append((k, float(got), cap))
+        ok = (not fails) and (not (self.require_all and misses))
+        rec = {"stage": stage, "accepted": bool(ok), "before": self.before,
+               "after": after, "fails": fails, "missing": misses,
+               "budget": dict(self.budget)}
+        self.rows.append(rec)
+        if self.log:
+            self.log("")
+            self.log("    FoM GATE [%s]" % stage)
+            self.log("      %-30s %-12s %-12s %s"
+                     % ("figure of merit", "before", "after", "budget"))
+            for k in ("vth_mV", "ss_mV_dec", "ion_pct", "dibl_mV_V"):
+                if k not in self.budget:
+                    continue
+                self.log("      %-30s %-12s %-12s %-10.4g%s"
+                         % (FOM_LABEL.get(k, k),
+                            _fmt((self.before or {}).get(k)),
+                            _fmt(after.get(k)), self.budget[k],
+                            "" if not any(f[0] == k for f in fails)
+                            else "   <-- OVER"))
+            for k in misses:
+                self.log("      %-30s could not be measured"
+                         % FOM_LABEL.get(k, k))
+            if ok:
+                self.log("      ACCEPTED -- every figure of merit is inside"
+                         " the budget.")
+            else:
+                self.log("      REFUSED. The scorer total is not the reason;"
+                         " these are:")
+                for k, got, cap in fails:
+                    self.log("        %s is %.4g against a budget of %.4g"
+                             % (FOM_LABEL.get(k, k), got, cap))
+        return dict(card_after) if (ok and card_after is not None) \
+            else (dict(card_before) if card_before is not None else None)
+
+    def format_rows(self, title="every FoM gate verdict in this run"):
+        L = ["    " + title,
+             "    %-44s %s" % ("stage", "verdict")]
+        for r in self.rows:
+            L.append("    %-44s %s" % (r["stage"][:44],
+                                       "kept" if r["accepted"] else "refused"))
+        return "\n".join(L)
+
+
+def _fmt(x):
+    if x is None:
+        return "-"
+    try:
+        return "%.4g" % float(x)
+    except (TypeError, ValueError):
+        return "-"
+
+
+# ===========================================================================
+#  StructuralGate -- for flipping a mode switch, v1.1.20
+# ===========================================================================
+#  A mode switch is not a knob, it is a different model. `FrozenGate` cannot
+#  judge one, because its whole premise is that the current is bit-identical
+#  and a structural switch usually perturbs it a little. `StageGate` can
+#  judge one, but it reports a single total and hides the fact that the
+#  current moved at all.
+#
+#  So this gate reports BOTH halves separately and accepts on a rule stated
+#  up front: the capacitance must improve by at least `want_gain`, and the
+#  current must not move by more than `allow_iv`. It never silently accepts a
+#  current movement; it prints the number every time.
+
+class StructuralGate(object):
+    """Flip a switch, measure both sides, accept on a stated rule.
+
+        g = StructuralGate(allow_iv=1.0e-4, want_gain=0.0, log=print)
+        g.open(cv_err_before, iv_curves_before)
+        kept = g.close(cv_err_after, iv_curves_after, iv_names,
+                       card_before, card_after, stage="PART 4 -- BULKMOD on")
+
+    `allow_iv` is the largest relative point-by-point movement tolerated in
+    any current sweep. The default 1.0e-4 is a hundred times looser than
+    FrozenGate's 1.0e-9 and still a hundred times tighter than anything a
+    figure of merit would notice, which is the band a structural switch's
+    unavoidable arithmetic perturbation should sit in.
+    """
+
+    def __init__(self, allow_iv=1.0e-4, want_gain=0.0, log=None):
+        self.allow_iv = float(allow_iv)
+        self.want_gain = float(want_gain)
+        self.log = log
+        self.err0 = None
+        self.curves0 = None
+        self.rows = []
+
+    def open(self, cv_err, iv_curves):
+        self.err0 = None if cv_err is None else float(cv_err)
+        self.curves0 = dict(iv_curves or {})
+        if self.log:
+            self.log("    STRUCTURAL GATE opens. capacitance error now %s,"
+                     " and the current" % _fmt(self.err0))
+            self.log("    may move by at most %.1e point by point."
+                     % self.allow_iv)
+        return self.err0
+
+    def close(self, cv_err, iv_curves, iv_names, card_before=None,
+              card_after=None, stage="a structural change"):
+        from ..l4_knowledge.switch_scope import verify_switch
+        res = verify_switch(self.curves0, iv_curves, iv_names)
+        moved = res.get("iv_worst")
+        err1 = None if cv_err is None else float(cv_err)
+        gain = None
+        if self.err0 is not None and err1 is not None:
+            gain = self.err0 - err1
+        ok_cv = (gain is not None and gain >= self.want_gain)
+        ok_iv = (moved is not None and moved <= self.allow_iv)
+        ok = bool(ok_cv and ok_iv)
+        rec = {"stage": stage, "accepted": ok, "err_before": self.err0,
+               "err_after": err1, "iv_worst": moved,
+               "iv_where": res.get("iv_where"), "allow_iv": self.allow_iv,
+               "per_sweep": res.get("per_sweep")}
+        self.rows.append(rec)
+        if self.log:
+            self.log("")
+            self.log("    STRUCTURAL GATE [%s]" % stage)
+            self.log("      capacitance error : %s -> %s"
+                     % (_fmt(self.err0), _fmt(err1)))
+            self.log("      largest move in any current sweep: %s  (%s)"
+                     % ("-" if moved is None else "%.3e" % moved,
+                        res.get("iv_where") or "-"))
+            self.log("      the allowance was %.1e, so the current is %s"
+                     % (self.allow_iv,
+                        "inside it" if ok_iv else "OUTSIDE it"))
+            if ok:
+                self.log("      ACCEPTED.")
+            elif not ok_cv:
+                self.log("      REFUSED: the capacitance did not improve"
+                         " by the %.4g asked for." % self.want_gain)
+            else:
+                self.log("      REFUSED: the current moved too much. That is"
+                         " worth reading, not")
+                self.log("      working around -- it says the switch does"
+                         " more to the current here")
+                self.log("      than the source said it would.")
+        return dict(card_after) if (ok and card_after is not None) \
+            else (dict(card_before) if card_before is not None else None)
+
+
+class AnchorGate(object):
+    """Pin a parameter the data does not measure, and prove it cost nothing.
+
+    v1.1.22.  THE DECISION THIS GATE EXISTS TO MAKE
+    -----------------------------------------------
+    `l6_verify.determinacy` can say that a fitted value is not a measurement:
+    the parameter lies along a direction the data does not resolve, so it is
+    wherever the fit happened to leave it. That is a finding, not an action.
+    The action is to MOVE it to a value that can be defended -- the model's
+    own declared default, a value from the literature, or a tie the model
+    itself declares, such as VSAT1 defaulting to VSAT -- and let the
+    parameters it trades against re-fit around it.
+
+    The claim being tested is precise and falsifiable:
+
+        if the direction really is unmeasured, then anchoring along it and
+        re-fitting must cost almost nothing.
+
+    So the gate accepts only when BOTH hold:
+
+      * the error rises by no more than `allow_pct` per cent, relative; and
+      * every figure of merit stays inside the budget it was given.
+
+    If the error jumps, the direction was measured after all, the audit was
+    wrong, and the anchor is refused and reported as refused. That is the
+    whole value of running it this way round: the anchoring is an experiment
+    with a stated prediction, not a preference.
+    """
+
+    def __init__(self, allow_pct=2.0, budget=None, log=None):
+        self.allow_pct = float(allow_pct)
+        self.budget = dict(budget or FOM_BUDGET)
+        self.log = log
+        self.err0 = None
+        self.fom0 = None
+        self.rows = []
+
+    def open(self, err, iv=None, dibl_model=None, dibl_ref=None):
+        self.err0 = None if err is None else float(err)
+        self.fom0 = (fom_errors(iv, dibl_model, dibl_ref) if iv else None)
+        if self.log:
+            self.log("    ANCHOR GATE opens. the error of the card being "
+                     "anchored is %s," % _fmt(self.err0))
+            self.log("    and it may rise by at most %.3g %% before the "
+                     "anchor is refused." % self.allow_pct)
+            if self.fom0:
+                for k in ("vth_mV", "ss_mV_dec", "ion_pct", "dibl_mV_V"):
+                    if k in self.fom0:
+                        self.log("      %-28s now %-10.4g  budget %g"
+                                 % (FOM_LABEL.get(k, k), self.fom0[k],
+                                    self.budget.get(k, float("nan"))))
+        return self.err0
+
+    def close(self, err, iv=None, dibl_model=None, dibl_ref=None,
+              anchored=None, stage="an anchoring"):
+        err1 = None if err is None else float(err)
+        rise = None
+        if self.err0 not in (None, 0.0) and err1 is not None:
+            rise = 100.0 * (err1 / self.err0 - 1.0)
+        ok_err = (rise is not None and rise <= self.allow_pct)
+        fom1 = (fom_errors(iv, dibl_model, dibl_ref) if iv else None)
+        fails = []
+        if fom1:
+            for k, cap in self.budget.items():
+                v = fom1.get(k)
+                if v is not None and np.isfinite(v) and v > float(cap):
+                    fails.append((k, v, float(cap)))
+        ok = bool(ok_err and not fails)
+        rec = {"stage": stage, "accepted": ok, "err_before": self.err0,
+               "err_after": err1, "rise_pct": rise,
+               "allow_pct": self.allow_pct,
+               "anchored": dict(anchored or {}),
+               "fom_before": self.fom0, "fom_after": fom1,
+               "fails": fails}
+        self.rows.append(rec)
+        if self.log:
+            self.log("")
+            self.log("    ANCHOR GATE [%s]" % stage)
+            if anchored:
+                for n in sorted(anchored):
+                    a = anchored[n]
+                    self.log("      pinned %-11s %-14.6g -> %-14.6g   %s"
+                             % (n, a.get("from", float("nan")),
+                                a.get("to", float("nan")),
+                                a.get("why", "")))
+            self.log("      error : %s -> %s   (%s)"
+                     % (_fmt(self.err0), _fmt(err1),
+                        "-" if rise is None else "%+.3f %%" % rise))
+            self.log("      the allowance was %.3g %%, so the error is %s"
+                     % (self.allow_pct, "inside it" if ok_err
+                        else "OUTSIDE it"))
+            if fom1:
+                self.log("      figure of merit            before      after"
+                         "       budget")
+                for k in ("vth_mV", "ss_mV_dec", "ion_pct", "dibl_mV_V"):
+                    if k not in fom1:
+                        continue
+                    b = (self.fom0 or {}).get(k)
+                    self.log("      %-26s %-11.4g %-11.4g %g%s"
+                             % (FOM_LABEL.get(k, k),
+                                b if b is not None else float("nan"),
+                                fom1[k], self.budget.get(k, float("nan")),
+                                "" if not any(f[0] == k for f in fails)
+                                else "   <-- OVER"))
+            if ok:
+                self.log("      ACCEPTED -- the anchor cost what the audit "
+                         "predicted it would, which is almost nothing.")
+                self.log("      The pinned values are now defensible AND the "
+                         "fit is as good as it was.")
+            else:
+                why = []
+                if not ok_err:
+                    why.append("the error rose by more than the allowance")
+                if fails:
+                    why.append("%d figure(s) of merit went over budget"
+                               % len(fails))
+                self.log("      REFUSED: %s." % "; and ".join(why))
+                self.log("      Read that rather than loosening the rule: it "
+                         "says the data DOES")
+                self.log("      measure this direction, so the audit that "
+                         "called it free was wrong.")
+        return ok, rec
+
+
+class FullGate(object):
+    """A gate that cannot pass a card by looking at only half of it.
+
+    v1.1.27.  WHY THIS REPLACES AnchorGate FOR CAPACITANCE WORK
+    -----------------------------------------------------------
+    Step 26's PART 6 put 37 parameters into one fit, the error went to 1.0e9
+    and the capacitance was destroyed. The gate printed ACCEPTED. It was not
+    lying: it had been given the drain current and the four figures of merit
+    to judge, the fit had frozen every current parameter so the current had
+    not moved, and every figure of merit was still inside budget. Nobody had
+    given it the capacitance.
+
+    A gate that is only shown the half of the card that cannot change is not
+    a gate. This one is shown all of it:
+
+      * the drain current may rise by at most `allow_pct` per cent
+      * the capacitance may rise by at most `cv_allow_pct` per cent, which
+        defaults to zero, meaning it has to get better or stay level
+      * every figure of merit stays inside its budget
+      * and no defect being tracked is allowed to get worse
+
+    All four have to hold. Any one of them failing refuses the card, and the
+    reason is printed.
+    """
+
+    def __init__(self, allow_pct=2.0, cv_allow_pct=0.0, budget=None,
+                 defect_targets=None, log=None):
+        self.allow_pct = float(allow_pct)
+        self.cv_allow_pct = float(cv_allow_pct)
+        self.budget = dict(budget or FOM_BUDGET)
+        self.targets = dict(defect_targets or {})
+        self.log = log
+        self.iv0 = self.cv0 = None
+        self.fom0 = None
+        self.def0 = {}
+        self.rows = []
+
+    @staticmethod
+    def _dist(metrics, targets):
+        """How far each tracked defect is from the device, as a positive
+        number. Smaller is better, always."""
+        out = {}
+        for k, want in (targets or {}).items():
+            got = (metrics or {}).get(k)
+            if got is None:
+                continue
+            out[k] = abs(float(want) - float(got))
+        return out
+
+    def open(self, iv, cv, fom_iv=None, dibl_model=None, dibl_ref=None,
+             metrics=None):
+        self.iv0 = None if iv is None else float(iv)
+        self.cv0 = None if cv is None else float(cv)
+        self.fom0 = (fom_errors(fom_iv, dibl_model, dibl_ref)
+                     if fom_iv else None)
+        self.def0 = self._dist(metrics, self.targets)
+        if self.log:
+            self.log("    FULL GATE opens on four things at once:")
+            self.log("      drain current      %s   may rise at most %.3g %%"
+                     % (_fmt(self.iv0), self.allow_pct))
+            self.log("      capacitance        %s   may rise at most %.3g %%"
+                     % (_fmt(self.cv0), self.cv_allow_pct))
+            if self.fom0:
+                for k in ("vth_mV", "ss_mV_dec", "ion_pct", "dibl_mV_V"):
+                    if k in self.fom0:
+                        self.log("      %-18s %-10.4g budget %g"
+                                 % (FOM_LABEL.get(k, k), self.fom0[k],
+                                    self.budget.get(k, float("nan"))))
+            for k in sorted(self.def0):
+                self.log("      %-18s %-10.4g away from the device"
+                         % (k, self.def0[k]))
+        return self.iv0
+
+    def close(self, iv, cv, fom_iv=None, dibl_model=None, dibl_ref=None,
+              metrics=None, stage="a change", changed=None):
+        iv1 = None if iv is None else float(iv)
+        cv1 = None if cv is None else float(cv)
+        fails = []
+
+        def _rise(a, b):
+            if a in (None, 0.0) or b is None:
+                return None
+            return 100.0 * (b / a - 1.0)
+
+        r_iv = _rise(self.iv0, iv1)
+        r_cv = _rise(self.cv0, cv1)
+        if iv1 is None:
+            fails.append(("the drain current could not be evaluated", 0, 0))
+        elif r_iv is not None and r_iv > self.allow_pct:
+            fails.append(("drain current", r_iv, self.allow_pct))
+        if cv1 is None:
+            fails.append(("the capacitance could not be evaluated", 0, 0))
+        elif r_cv is not None and r_cv > self.cv_allow_pct:
+            fails.append(("capacitance", r_cv, self.cv_allow_pct))
+        fom1 = (fom_errors(fom_iv, dibl_model, dibl_ref) if fom_iv else None)
+        if fom1:
+            for k, cap in self.budget.items():
+                v = fom1.get(k)
+                if v is not None and np.isfinite(v) and v > float(cap):
+                    fails.append((FOM_LABEL.get(k, k), v, float(cap)))
+        def1 = self._dist(metrics, self.targets)
+        worse = []
+        for k in sorted(self.def0):
+            if k not in def1:
+                continue
+            if def1[k] > self.def0[k] * 1.001 + 1.0e-300:
+                worse.append((k, self.def0[k], def1[k]))
+        ok = bool(not fails and not worse)
+        rec = {"stage": stage, "accepted": ok,
+               "iv_before": self.iv0, "iv_after": iv1, "iv_rise_pct": r_iv,
+               "cv_before": self.cv0, "cv_after": cv1, "cv_rise_pct": r_cv,
+               "fails": [(a, b, c) for a, b, c in fails],
+               "defects_before": dict(self.def0),
+               "defects_after": dict(def1),
+               "defects_worse": worse,
+               "changed": dict(changed or {})}
+        self.rows.append(rec)
+        if self.log:
+            self.log("")
+            self.log("    FULL GATE [%s]" % stage)
+            self.log("      drain current  %s -> %s   (%s)"
+                     % (_fmt(self.iv0), _fmt(iv1),
+                        "-" if r_iv is None else "%+.3f %%" % r_iv))
+            self.log("      capacitance    %s -> %s   (%s)"
+                     % (_fmt(self.cv0), _fmt(cv1),
+                        "-" if r_cv is None else "%+.3f %%" % r_cv))
+            for k in sorted(self.def0):
+                if k in def1:
+                    self.log("      %-14s %-12.5g -> %-12.5g %s"
+                             % (k, self.def0[k], def1[k],
+                                "closer" if def1[k] < self.def0[k]
+                                else "further away"))
+            if ok:
+                self.log("      ACCEPTED. The capacitance improved, the "
+                         "drain current held, every")
+                self.log("      figure of merit is inside budget, and no "
+                         "defect went backwards.")
+            else:
+                for a, b, c in fails:
+                    self.log("      REFUSED: %s %.4g against a limit of %.4g"
+                             % (a, b, c))
+                for k, a, b in worse:
+                    self.log("      REFUSED: %s went from %.5g to %.5g away "
+                             "from the device" % (k, a, b))
+        return ok, rec

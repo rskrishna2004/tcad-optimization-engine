@@ -5,16 +5,322 @@ All notable changes to TCADOpt are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Releases 1.1.1 through 1.1.19 all came out of one long piece of work: a full
-compact-model extraction for a 4-sheet gate-all-around nanosheet nFET, fitted
+Releases 1.1.1 through 1.2.0 all came out of one long piece of work: a full
+compact model extraction for a 4 sheet gate-all-around nanosheet nFET, fitted
 against Sentaurus TCAD reference data through PrimeSim HSPICE. Every one of
 them exists because the extraction hit something the engine could not do or
 got something wrong. The measured numbers quoted below are from that work.
+That extraction is complete as of 1.2.0, and the limit it ran into is a
+property of BSIM-CMG rather than of the engine. It is quoted with a number.
 
-The design-optimization path is untouched throughout. The Gaussian-process
-surrogate, the trust-region schedule, the acquisition functions, both
+The design optimization path is untouched throughout. The Gaussian process
+surrogate, the trust region schedule, the acquisition functions, both
 backends, the physics guard, the knowledge seeding and the experiment database
 behave exactly as in 1.1.0, and every existing campaign reproduces.
+
+## [1.2.0] - 2026-11-18
+
+The extraction this changelog has been tracking since 1.1.1 is finished. This
+release carries the modules it needed and, more importantly, the method it
+settled on, because three of the four expensive failures in that work were not
+bugs in the engine. They were the engine being pointed at the wrong number.
+
+Against the card 1.1.19 shipped, on the same device and the same sixteen
+reference curves, measured through PrimeSim HSPICE:
+
+```
+                                       1.1.19        1.2.0      change
+  the eight drain current sweeps      0.014114     0.014114      0.00 %
+  the eight capacitance, mean of rms  0.026916     0.024302     -9.71 %
+  the eight capacitance, POOLED       0.032142     0.027146    -15.54 %
+  the sixteen curve total             0.024116     0.020996    -12.94 %
+  the eight capacitance, total in aF  2.617306     2.204624    -15.77 %
+```
+
+The drain current is identical to the last digit printed. Every capacitance
+step used only parameters the dependency walk proves cannot reach the current,
+and then measured that the current had not moved rather than assuming it.
+
+The design optimization path is untouched, as in every release since 1.1.0.
+The Gaussian process surrogate, the trust region schedule, the acquisition
+functions, both backends, the physics guard, the knowledge seeding and the
+experiment database behave exactly as before and every existing campaign
+reproduces.
+
+### Added
+
+- `tcadopt/l6_verify/floor.py` -- a per curve survey of where the error lives,
+  with `rel_ss` as the pooled building block, plus `stale_weights`, which
+  compares a stored weight set against the curves as they are now and reports
+  the weights that no longer describe anything.
+
+  This exists because of the most expensive failure in the whole extraction. A
+  weighted objective was built from one card's residuals, and the card then
+  changed underneath it. A curve sitting at 0.184 per cent had drawn a weight
+  of 0.02, which an optimiser correctly reads as "this curve does not matter",
+  and it was free to rise to 0.667. The step shipped a card whose weighted
+  score had improved 16.8 per cent and whose pooled error was 8.17 per cent
+  worse than the card it started from, and the log reported success.
+
+- `tcadopt/l1_spec/guard.py` -- `CurveGuard`, which refuses a card on a per
+  curve basis rather than on a total, and `curve_pct` for reading one curve's
+  error against its target.
+
+- `tcadopt/l1_spec/achievable.py` -- `share_weights` and `apply_weights`, for
+  the cases where a weighted objective is genuinely wanted, together with
+  `live` and `capped` so a weight that cannot reach anything is visible.
+  Documented with the warning above attached.
+
+- `tcadopt/l1_spec/bias_pair.py` -- `pair`, `probe_row`, `need`, `verdict` and
+  `channel_total`. Measures what a parameter does to two drain biases
+  separately, so a knob that moves them in opposite directions can be found.
+  On the finished device exactly one parameter in the charge model did that,
+  and it turned out to be clamped.
+
+- `tcadopt/l5_opt/price.py` -- `scan`, `ladder`, `absolute`, `pick` and
+  `format_price`. Prices a parameter that two objectives disagree about
+  instead of gating it. The shared saturation voltage on this device closes 80
+  per cent of the high bias charge gap and costs 38 per cent of drain current
+  error with all seventeen current parameters free to repair the damage. That
+  is a refusal with a number attached, which a reader can disagree with and
+  cannot dispute.
+
+- `tcadopt/l6_verify/seed.py` -- `choose` and `ladder`. A derived seed is a
+  candidate measured against the model's own default, and if it loses, the
+  default goes on and the run carries on.
+
+  A seed computed correctly from the bottom dielectric isolation plug's plate
+  capacitance put the bias dependent Cgb ceiling at 3.04 attofarads on a
+  device whose Cgb never exceeds 1.93, because the model multiplies that
+  parameter by `NFINtotal * LeffCV`. The fit came out at 79.8 per cent, and
+  the run exited instead of carrying on.
+
+- `tcadopt/l4_knowledge/cgb_overlap.py` -- the gate to substrate charge in
+  closed form, `presolve`, and `accumulation_risk`, which reports how much of
+  a gate sweep sits below flatband and how large the model's dormant
+  accumulation branch would be if it opened.
+
+  A closed form solve promised Cgb could reach 1.39 per cent and the simulator
+  measured 1262 per cent on the card it proposed. The arithmetic was right
+  about its own term; there were two terms. BSIM-CMG puts the channel's
+  accumulation charge on the body node, it is dormant while the channel is
+  inverted, and the parameter the solve chose put 98 per cent of the sweep
+  below flatband. That branch is worth up to 61 attofarads against a measured
+  Cgb of 1.93.
+
+- `tcadopt/l4_knowledge/overlap.py` -- the drain and source overlap charge in
+  closed form, with `joint_presolve` for both sides at once because `vfbsdcv`
+  is shared, and `structure_bound`, which caps an overlap length at what the
+  spacer and the ungated channel allow.
+
+- `tcadopt/l4_knowledge/depgraph.py` -- builds the dependency table from the
+  model source and answers, per parameter, whether it can reach the drain
+  current at a given set of switches. `verify` then measures the answer rather
+  than trusting it.
+
+- `tcadopt/l4_knowledge/depgraph_bsimcmg_112.json` and
+  `depgraph_bsimcmg_112_bulk1.json` -- the dependency data the module above
+  reads, one file for the BSIM-CMG 112 parameter set and one for the bulk
+  model. These are data and not code, and `depgraph.py` does nothing without
+  them, so they are tracked in the repository rather than generated. They are
+  the only two non Python files this release adds to the package, which is why
+  eighteen files land in `tcadopt/` and not the sixteen modules listed here.
+
+- `tcadopt/l4_knowledge/structure.py` -- checks a card against the structure
+  it is supposed to describe, including `implied_eps_hk` and `weff_geomod5`,
+  and names the structural facts the model does not represent.
+
+- `tcadopt/l4_knowledge/switch_scope.py` and `census.py` -- what a model
+  switch newly makes live, and a census of which parameters move which curves.
+
+- `tcadopt/l6_verify/determinacy.py` -- `coord_jacobian`, `determinacy`,
+  `measured_interval` and `format_intervals`. An honest error bar per fitted
+  parameter and a list of the pairs the data cannot tell apart.
+
+  One parameter on the finished device was successively fitted to 0.0686, then
+  9.02, then 0.617, then 2.865 across four steps, moving by factors of a
+  hundred while the error changed by fractions of a per cent. It belongs in
+  the card and it does not belong in a results table as though it had been
+  measured.
+
+- `tcadopt/l9_report/overlay.py` and `tradeoff.py` -- figure generation for
+  model against reference, per curve error tables, and Pareto fronts.
+
+- `tcadopt/l1_spec/fom_objective.py` -- figures of merit as residual terms, so
+  threshold voltage, subthreshold slope and DIBL can be fitted alongside
+  curves rather than only checked afterwards.
+
+- Five new documents in the gate-all-around route, which is now fourteen pages
+  and still reads in order:
+
+  - `docs/GAA_THE_OBJECTIVE.md` -- the three different numbers that get called
+    the error, which one to minimise, and why a stored weight is a trap.
+  - `docs/GAA_THE_RULE.md` -- the acceptance rule, written before the run,
+    with every threshold read off the baseline rather than chosen.
+  - `docs/GAA_THE_JOINT_FIT.md` -- what a one at a time scan cannot find, the
+    aligner's calling convention written out exactly, and how to read its
+    convergence.
+  - `docs/GAA_WHEN_TO_STOP.md` -- the ledger. Close every direction the card
+    could still move in, each with a measurement, including how to find out
+    whether a bound belongs to the model or to your own range.
+  - `docs/GAA_CASE_STUDY_NFET.md` -- the whole extraction with real numbers,
+    including the eight mistakes and what each one cost.
+
+### Changed
+
+Five engine files change rather than being added. Before any of them went in,
+the import graph of the released 1.1.19 package was walked from every entry
+point to measure what depends on them, rather than assuming it. The result:
+`l8_orch/run_campaign.py` and `l8_orch/run_pareto.py`, the two entry points of
+the design optimization path, reach twelve and eleven modules respectively, and
+not one of these five is among them. The package `__init__.py` imports nothing
+at all, so importing TCADOpt pulls in no submodule. Nothing on the design
+optimization path can reach any of this code, which is why that path is
+unaffected by it.
+
+- `tcadopt/l6_verify/gate.py` grows from 26827 to 52383 bytes, and carries four
+  of the six fixes listed below: the pooled objective replacing the per curve
+  mean, weights no longer being stored between cards, the acceptance rule being
+  applied to every candidate rather than only to fits, and a rejected stage
+  reverting to the card it started from. Nothing in the package imports it. The
+  staged scripts import it directly.
+
+- `tcadopt/l5_opt/lm_align.py` grows from 37258 to 40204 bytes. It now
+  minimises the pooled residual, and its starting sum of squares equals the
+  point count times the pooled error squared, which is the self check that the
+  aligner and the reported number are the same function. It takes the card
+  dictionary as `params`, a list of names to free, and a dictionary of ranges
+  keyed by name, and it returns a result dictionary with the card under
+  `params`. That convention is documented in `docs/GAA_THE_JOINT_FIT.md`
+  because getting it wrong costs a run.
+
+- `tcadopt/l9_report/where.py` grows from 9917 to 16484 bytes, reporting signed
+  error per band per curve, which is how the charge partition limit was located
+  rather than guessed at.
+
+- `tcadopt/l4_knowledge/cv_scope.py` grows from 10594 to 14156 bytes. It is the
+  free zone, the parameters that cannot change the drain current, and it is the
+  only one of these five that anything in the package imports: `gate.py` reads
+  it.
+
+- `tcadopt/l3_exec/hspice_parser.py` changes without changing size, 36739 bytes
+  before and after. This is the module that reads the gate row out of the
+  simulator's own operating point print, and that stitches back together the
+  tables HSPICE splits when a print asks for more than four columns. Nothing on
+  the design optimization path reads an HSPICE listing at all.
+
+- `docs/GAA_CHARGE_PARTITION.md` now ends with the measurement that ends the
+  extraction. At the top of each gate sweep the device gives the source 0.5077
+  of the channel charge at the low drain bias and 0.6693 at the high one,
+  which are the textbook values of one half and two thirds to within 0.008.
+  BSIM-CMG gives 0.5459 and 0.6946 and no parameter on the card moves it.
+
+  Hold the model's own total charge and give it the device's split and the
+  worst curve goes from 14.18 per cent out to 6.96, so roughly half of the
+  largest single error in the extraction is this. On the finished card that
+  curve is 42 per cent of everything left, and Cgs at the high drain bias,
+  where the same error lands instead because the drain end is pinched off, is
+  another 19.
+
+  The page also now documents the symptom that appears before the cause is
+  understood. The fit breaks a symmetry the device has: `cgdl` and `cgsl`
+  finished a factor of 2.55 apart on a device whose own overlap floors are 1.5
+  per cent apart. Forcing them equal costs 23.55 per cent of pooled error, so
+  the asymmetry is load bearing and not an artefact.
+
+- `docs/GAA_TROUBLESHOOTING.md` gains six sections: a step that reports success
+  while shipping a worse card, a card that entered the pipeline unguarded, a
+  revert that went to the wrong card, a reproduce check where only the
+  capacitance moved, a parameter that will not go below a round number, and
+  the aligner refusing to run or running and appearing to do nothing.
+
+- `docs/GAA_COMPACT_MODEL.md` route map renumbered to fourteen steps, with the
+  two pages that decide what better means placed before the extraction order
+  rather than after it.
+
+- `check_docs.py` chain extended to all fifteen pages of the route.
+
+### Fixed
+
+- `check_docs.py` crashed on Python 2 instead of checking anything, and had
+  done so since 1.1.19 while its own docstring claimed it ran on 2.7. Python
+  2's `chr()` refuses any code point above 255, and the table of banned
+  characters is built from sixteen code points above it, so the file raised
+  `ValueError: chr() arg not in range(256)` while being read, before it
+  checked a single document. The table is now built through a helper that
+  spells the code point as an escape and lets the codec read it, which needs
+  no version test at all and was verified to return characters identical to
+  `chr()` for all seventeen entries. `tools/plain_text_md.py` had the same
+  fault on the same kind of table and is fixed the same way, and its docstring
+  no longer claims it needs Python 3.6.
+
+- `check_docs.py` would also have crashed on the one path that only runs when
+  it finds something, because it echoed the offending line, and a terminal
+  that cannot print that character raises rather than prints. The snippet is
+  now reduced to ASCII before it is reported, so a failure reports instead of
+  raising.
+
+- `check_setup.py` reported a Python as too old without mentioning that a new
+  enough interpreter usually sits beside it under another name, which is the
+  normal state of a simulator host. It now looks for `python3` and the
+  versioned names, and if it finds one it prints its version and the exact
+  command to use instead. It installs nothing and changes nothing.
+
+- A guard that wrapped only the local fit. A ladder, a scan or a closed form
+  solve can each produce a card, and on this project the ladder's pick fed the
+  rest of the step without ever passing the guard. Its Cgd at the high drain
+  bias was 262 per cent worse than the baseline on a guard that allows 10. The
+  rule is now a function that every candidate passes, from every source.
+
+- A revert that went to whatever the previous part left rather than to the card
+  the step started with. When a later part was correctly refused, the revert
+  put the unguarded pick back, and three subsequent parts each reported a
+  sensible improvement measured against a card that had already regressed.
+
+- A baseline identified by the name of a constant. `CARDnn` in the extraction
+  scripts means the card step nn started from, not the card it produced, and a
+  step loaded one seven versions too old. The repair is to simulate every
+  candidate baseline and keep the one that matches the numbers the earlier log
+  printed, which is now printed as a table at the start of a run.
+
+- An explicit value written for a parameter whose declared default is a
+  reference to another parameter. `vfbsdcv` defaults to `vfbsd`, declared 0.0,
+  but the model assigns `vfbsdcv_v = vfbsd_v`, a computed variable holding the
+  flatband voltage of the source and drain, about +0.43 V on this device.
+  Writing 0.0 moved the capacitance from 0.026916 to 0.075682 while the drain
+  current did not move at all.
+
+- `sys.exit` reachable from a measurement. A probe pushes a parameter to the
+  end of its range on purpose, and some of those cards make the simulator fail
+  to converge or the model reject the card. Both are results. One run of two
+  and a half hours was lost to treating them as accidents. Runs now count
+  their own exits and print the count before anything is simulated.
+
+- A per curve acceptance threshold chosen by hand. An earlier draft capped the
+  rise in any curve at 0.35 attofarads, a number with no derivation, and the
+  best card available asked for 0.3232. It passed by five thousandths of an
+  attofarad. Both caps are now read off the baseline card, so the rule reads
+  "no curve may end up worse than the worst curve already was".
+
+### Known limits, measured
+
+- BSIM-CMG 112.1.0 has no charge partition parameter. BSIM4 and BSIM-BULK
+  expose this as XPART, documented in the BSIM4 manual chapter 7 section
+  7.2.4. This is about 40 per cent of the error left on the finished card and
+  no amount of fitting reaches it.
+
+- `ckappad`, `ckappas` and `ckappab` are clamped by the model at 0.02. Twelve
+  cards at 0.01, 0.005, 0.001 and 1e-5 returned curves identical to the 0.02
+  card to 0.0000e+00 attofarads. `ckappad` was the only parameter in the
+  charge model whose two drain biases move in opposite directions, which was
+  the shape of the remaining error, so this clamp is the limit that closed the
+  search.
+
+- The capacitance side is still driven by staged scripts rather than by one
+  problem file. The current side runs end to end.
+
+- The p-type card is extracted by running the whole thing again. There is no
+  shared n and p extraction yet.
 
 ## [1.1.19] - 2026-09-29
 
@@ -362,8 +668,8 @@ instead of searching a device's geometry for the best electrical
 characteristics, it can fit a compact model's parameters to reference curves
 from a device you have already simulated. Both paths share one optimizer core.
 
-The optimizer itself is untouched. The Gaussian-process surrogate, the
-trust-region schedule, the acquisition functions, both backends, the physics
+The optimizer itself is untouched. The Gaussian process surrogate, the
+trust region schedule, the acquisition functions, both backends, the physics
 guard, the knowledge seeding and the experiment database are all byte-identical
 to v1.0.1, and every existing campaign reproduces exactly.
 

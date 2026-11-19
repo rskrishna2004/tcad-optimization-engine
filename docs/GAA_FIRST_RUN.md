@@ -298,4 +298,8 @@ number means.
 - to find out whether your numbers mean anything:
   [GAA_CHECKING_RESULTS.md](GAA_CHECKING_RESULTS.md)
 
-**Next:** [The extraction order](GAA_EXTRACTION_ORDER.md)
+**Next:** [Which number you are minimising](GAA_THE_OBJECTIVE.md)
+
+Do not skip it to get to the extraction order. It is the shortest page on this
+route and it is the one that decides whether every number you produce after it
+means what you think it means.

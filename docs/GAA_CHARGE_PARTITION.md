@@ -60,7 +60,7 @@ print(s["frac_d"])    # the drain's share, as a fraction
 
 ### What the numbers should look like
 
-Measured on a real 4-sheet nanosheet nFET in TCAD:
+Measured on a real 4 sheet nanosheet nFET in TCAD:
 
 | drain bias | drain's share of channel charge |
 |---|---|
@@ -274,4 +274,143 @@ separate times with `CGSL` and `CGDL` at zero, called them dead all three
 times, and was measuring the zero rather than the parameter. When you survey a
 parameter that only multiplies another term, switch the other term on first.
 
-**Next:** [Checking the result](GAA_CHECKING_RESULTS.md)
+---
+
+## The limit that ends the extraction
+
+Everything above is about the share of the channel charge the drain receives
+and how the model's own equations bound it. This section is the measurement
+that closes the question, and it is the single most useful number this guide
+produced.
+
+Read the split off the terminals at the top of each gate sweep. Take Cgs and
+Cgd at the highest gate voltage, add them, and work out the fraction that goes
+to the source. There are two textbook answers to compare against. With almost
+no drain voltage the channel is nearly uniform and the split should be one
+half to each end. In saturation the drain end is pinched off and the classical
+answer is two thirds to the source.
+
+On this project's device, measured:
+
+| | low drain bias | high drain bias |
+|---|---|---|
+| textbook | 0.5000 | 0.6667 |
+| the device | 0.5077 | 0.6693 |
+| BSIM-CMG | 0.5459 | 0.6946 |
+
+**Look at the middle row before the bottom one.** The device sits within 0.008
+of the textbook value at both ends of its range. That is not a coincidence and
+it is not a result about the model. It is the strongest single check on your
+reference data that exists on this route, and it is free. If your own device
+does not land near those two numbers, something is wrong with the extraction
+of the gate row, or with the bias range, or with the structure, and you should
+go back to [the reference data page](GAA_REFERENCE_DATA.md) before fitting
+anything.
+
+Now the bottom row. BSIM-CMG is too far toward the source at both biases, by
+0.038 and 0.025, and **no parameter on the card moves it.**
+
+### How much that costs, and how to measure it on your device
+
+Hold the model's own total charge fixed and give it the device's split
+instead. Both ends then carry nothing but the error in the total:
+
+```python
+ms, md = model_cgs[-1], model_cgd[-1]        # at the top of the sweep
+ts, td = dev_cgs[-1], dev_cgd[-1]
+f_dev = ts / (ts + td)
+total = ms + md
+cs, cd = f_dev * total, (1.0 - f_dev) * total
+
+print("the TOTAL is %+.2f per cent" % (100 * (total / (ts + td) - 1)))
+print("the SPLIT is %+.4f too far toward the source" % (ms / total - f_dev))
+print("  Cgs  %+7.2f -> %+7.2f per cent"
+      % (100 * (ms / ts - 1), 100 * (cs / ts - 1)))
+print("  Cgd  %+7.2f -> %+7.2f per cent"
+      % (100 * (md / td - 1), 100 * (cd / td - 1)))
+```
+
+On this device, at the low drain bias, that printed
+
+```
+      the TOTAL is -6.96 per cent. Parameters move this.
+      the SPLIT is +0.0382 too far toward the source. Nothing on the
+      card moves this.
+
+      hold the model's own total, give it the device's split:
+        Cgs    +0.04 per cent  ->    -6.96 per cent
+        Cgd   -14.18 per cent  ->    -6.96 per cent
+
+      SO THE SPLIT CARRIES 51 PER CENT OF THE Cgd ERROR HERE.
+```
+
+And at the high drain bias the same arithmetic says something different and
+just as useful:
+
+```
+      Cgd is already right here, at -1.77 per cent, because the
+      drain end is pinched off and this curve is nearly all
+      overlap. The split lands on Cgs instead and makes it
+      +10.35 per cent where the total alone would give +6.35.
+```
+
+So one structural limit shows up as two completely different symptoms. At the
+low drain bias it halves the accuracy of Cgd. At the high drain bias Cgd is
+fine and the same error appears on Cgs. On the finished card those two curves
+were 42.2 and 19.0 per cent of all the error that was left, which is 61 per
+cent of the total between them.
+
+### Why no parameter reaches it
+
+BSIM4 and BSIM-BULK give the user a charge partitioning parameter for exactly
+this, documented in the BSIM4 manual chapter 7 section 7.2.4. It is called
+XPART and it sets how the inversion charge is divided between source and
+drain. **BSIM-CMG 112.1.0 has no equivalent.** It is not in the released
+source and the Technical Manual has no charge partitioning section.
+
+If you have the Verilog A source on your machine, confirm it yourself rather
+than taking this on trust, because your model version may differ:
+
+```bash
+grep -rin xpart /path/to/bsimcmg/
+```
+
+If that returns nothing, the limit is real for your version too. Note that a
+compiled simulator such as PrimeSim has the model built in, so a Verilog A
+copy only exists on your machine if somebody downloaded one. On the machine
+this project ran on there was none, across 400,000 files searched, so the
+claim rests on an earlier reading of the released source and is stated here as
+such.
+
+### The symptom you will see before you understand the cause
+
+The fit will break a symmetry your device has.
+
+This device is symmetric. Equal spacers, equal ungated channel, the same
+doping in source and drain, and its own curves agree: at the bottom of the
+sweep, where the channel is off, the device has Cgd 14.1162 attofarads against
+Cgs 13.9031, which is 1.5 per cent apart. The finished card carried
+
+```
+      cgdl    2.65881e-10 F/m   an overlap of 5.65 nm
+      cgsl    1.04367e-10 F/m   an overlap of 2.22 nm
+```
+
+a factor of 2.55 apart. Neither length is impossible on its own, since both
+are under the 10 nm the structure allows. Their ratio cannot be right.
+
+Forcing `cgdl = cgsl` across a range of values, with `ckappad = ckappas`, cost
+23.55 per cent of pooled error at best and 411 per cent at worst. So the
+asymmetry is load bearing. The fit is using it to carry part of a symmetric
+device's behaviour, because the partition is fixed and the overlap is the only
+asymmetric thing left to bend.
+
+That measurement belongs in your report. It says how much of the agreement
+rests on something unphysical, and it is an upper bound, because a symmetric
+card refitted in its other parameters could only do better than one that was
+not refitted at all. [Knowing when it is finished](GAA_WHEN_TO_STOP.md) has
+the code for it.
+
+---
+
+**Next:** [Walking one knob at a time, and the fit](GAA_THE_JOINT_FIT.md)

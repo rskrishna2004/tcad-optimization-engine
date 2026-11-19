@@ -239,3 +239,147 @@ def band_probe(targets, sweep, band, i_split=1.0e-7):
         v = band_vector(rep, [sweep], band)
         return v[0]
     return probe
+
+
+# ===========================================================================
+#  trade_bands -- WHERE a trade's cost lands, v1.1.20
+# ===========================================================================
+#  `l5_opt.trade` prices a shared parameter and reports the price as scalars:
+#  the fit total went up by this much, the thing you wanted went up by that
+#  much. Scalars are enough to choose a rung and not enough to defend the
+#  choice, because a total that rises 28 % can mean either of two completely
+#  different things:
+#
+#    the cost is SPREAD -- a little worse everywhere, including places that
+#        never appear in a report. Then the rise is an accounting artifact of
+#        the scorer and taking the trade is right.
+#    the cost is LOCAL  -- one band of one sweep got much worse. Then the
+#        rise is real and taking the trade is wrong, whatever the total says.
+#
+#  Step 22 produced exactly that ambiguity. KSATIV = 0.45 raised the drain
+#  current's scorer total by 28.5 % while leaving the threshold voltage, the
+#  subthreshold slope, the on current and DIBL all inside budget. Nothing in
+#  the engine could say which of the two cases it was, so the run kept the old
+#  value on a cap nobody had chosen deliberately.
+#
+#  This answers it. Band the error at every rung, then diff band by band
+#  against the first rung, and the answer is visible rather than argued.
+
+def trade_bands(rows, targets, i_split=1.0e-7, key="curves"):
+    """Band-resolve every rung of a trade curve.
+
+    `rows` is what `l5_opt.trade.trade_curve` returns, each row needing the
+    rung's curves under `row[key]` (attach them in the `read` callable, which
+    already has the evaluation in hand).
+
+    Returns {"per_rung": {value: bandrep}, "delta": [...]} where each delta
+    entry is one (sweep, band) with its signed mean error at the first rung,
+    at this rung, and the change.
+    """
+    per, order = {}, []
+    for r in rows or ():
+        cur = r.get(key)
+        if cur is None:
+            continue
+        v = float(r["value"])
+        per[v] = bands(targets, cur, i_split=i_split)
+        order.append(v)
+    out = {"per_rung": per, "order": order, "delta": []}
+    if len(order) < 2:
+        return out
+    base = per[order[0]]
+    for v in order[1:]:
+        rep = per[v]
+        for sweep in sorted(rep):
+            b0 = dict((x["band"], x) for x in base.get(sweep, []))
+            for row in rep[sweep]:
+                a = b0.get(row["band"])
+                if a is None:
+                    continue
+                out["delta"].append({
+                    "value": v, "sweep": sweep, "band": row["band"],
+                    "n": row["n"],
+                    "base_pct": a["mean_pct"], "rung_pct": row["mean_pct"],
+                    "d_rms_pct": row["rms_pct"] - a["rms_pct"],
+                    "d_abs_pct": abs(row["mean_pct"]) - abs(a["mean_pct"]),
+                })
+    return out
+
+
+def trade_cost_shape(rep, value, concentration=0.60):
+    """Is this rung's extra error SPREAD or LOCAL?
+
+    Sums the per-band rise in RMS error across every band of every sweep, then
+    asks what fraction of it sits in the single worst band. Above
+    `concentration` the cost is local and has one address; below it the cost is
+    spread and the rise is the scorer counting many small things.
+
+    Returns {"total_rise", "worst", "worst_share", "shape", "n_bands",
+             "n_worse", "n_better"}.
+    """
+    d = [x for x in rep.get("delta", [])
+         if abs(float(x["value"]) - float(value)) < 1.0e-12]
+    if not d:
+        return {"shape": "no data", "total_rise": None, "worst": None,
+                "worst_share": None, "n_bands": 0, "n_worse": 0,
+                "n_better": 0}
+    rises = [max(x["d_rms_pct"], 0.0) for x in d]
+    total = float(sum(rises))
+    k = int(np.argmax(rises))
+    share = (rises[k] / total) if total > 0 else 0.0
+    n_worse = sum(1 for x in d if x["d_rms_pct"] > 0.0)
+    n_better = sum(1 for x in d if x["d_rms_pct"] < 0.0)
+    if total <= 0.0:
+        shape = "NO COST -- not one band got worse"
+    elif share >= concentration:
+        shape = "LOCAL -- %.0f%% of the rise is in one band" % (100.0 * share)
+    else:
+        shape = ("SPREAD -- the worst single band holds only %.0f%% of it"
+                 % (100.0 * share))
+    return {"total_rise": total, "worst": d[k], "worst_share": share,
+            "shape": shape, "n_bands": len(d), "n_worse": n_worse,
+            "n_better": n_better}
+
+
+def format_trade_bands(rep, value, label="parameter", top=10):
+    """The band-by-band account of one rung's cost, worst first."""
+    d = [x for x in rep.get("delta", [])
+         if abs(float(x["value"]) - float(value)) < 1.0e-12]
+    d.sort(key=lambda x: -x["d_rms_pct"])
+    sh = trade_cost_shape(rep, value)
+    L = ["    where the cost of %s = %.6g actually lands, band by band"
+         % (label, value),
+         "    (base is the first rung of the same ladder, re-fitted the"
+         " same way)",
+         "",
+         "    %-24s %-12s %-10s %-10s %-10s %s"
+         % ("sweep", "band", "base %", "rung %", "d RMS %", "n")]
+    for x in d[:top]:
+        L.append("    %-24s %-12s %-+10.3f %-+10.3f %-+10.3f %d"
+                 % (x["sweep"][:24], x["band"][:12], x["base_pct"],
+                    x["rung_pct"], x["d_rms_pct"], x["n"]))
+    if len(d) > top:
+        L.append("    ... and %d more band(s)" % (len(d) - top))
+    L.append("")
+    L.append("    %d band(s) got worse, %d got BETTER, out of %d"
+             % (sh["n_worse"], sh["n_better"], sh["n_bands"]))
+    L.append("    total rise in RMS, summed over every band: %s"
+             % ("-" if sh["total_rise"] is None
+                else "%.3f points" % sh["total_rise"]))
+    if sh.get("worst"):
+        w = sh["worst"]
+        L.append("    the worst single band: %s / %s, %+.3f points"
+                 % (w["sweep"], w["band"], w["d_rms_pct"]))
+    L.append("")
+    L.append("    VERDICT: %s" % sh["shape"])
+    if sh["shape"].startswith("SPREAD") or sh["shape"].startswith("NO COST"):
+        L.append("    A spread cost is the scorer adding up many small"
+                 " things. Read the figures")
+        L.append("    of merit instead, because that is what the rise is"
+                 " hiding behind.")
+    elif sh["shape"].startswith("LOCAL"):
+        L.append("    A local cost has one address. Go and look at that"
+                 " band before accepting")
+        L.append("    this rung, because a figure of merit can miss it"
+                 " entirely.")
+    return "\n".join(L)
